@@ -5,9 +5,11 @@ import EssentiaWASM from "essentia.js/dist/essentia-wasm.web.js";
 import essentiaWasmUrl from "essentia.js/dist/essentia-wasm.web.wasm?url";
 import "./SongMoodDetector.css";
 
-export default function SongMoodDetector() {
+export default function SongMoodDetector({ onSongAdded }) {
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("");
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -151,21 +153,45 @@ export default function SongMoodDetector() {
 
     // 📡 Send to backend to store
     const formData = new FormData();
+    const resolvedTitle = title.trim() || file.name;
+    const resolvedArtist = artist.trim() || "Unknown";
     formData.append("audio", file);
-    formData.append("title", file.name);
-    formData.append("artist", "Unknown");
+    formData.append("title", resolvedTitle);
+    formData.append("artist", resolvedArtist);
     formData.append("mood", mood);
 
-    await axios.post("http://localhost:3000/songs", formData);
+    await axios.post("http://localhost:3000/songs", formData).then(response => {
+      if (onSongAdded && response.data.song) {
+        onSongAdded(response.data.song);
+      }
+    });
 
     setUploading(false);
     alert(`Song analyzed and saved! Mood: ${mood}`);
     setFileName("");
+    setTitle("");
+    setArtist("");
   };
 
   return (
     <div className="song-mood-detector">
       <div className="upload-area">
+        <div className="song-metadata">
+          <input
+            type="text"
+            placeholder="Song title (optional)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={uploading}
+          />
+          <input
+            type="text"
+            placeholder="Artist (optional)"
+            value={artist}
+            onChange={(e) => setArtist(e.target.value)}
+            disabled={uploading}
+          />
+        </div>
         <input
           type="file"
           id="audio-upload"

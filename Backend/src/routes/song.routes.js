@@ -60,4 +60,20 @@ router.get("/songs", async (req, res) => {
   });
 });
 
+router.delete("/songs/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await songModel.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Song not found" });
+    }
+
+    res.status(200).json({ message: "Song deleted successfully" });
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({ message: "Delete failed" });
+  }
+});
+
 module.exports = router;

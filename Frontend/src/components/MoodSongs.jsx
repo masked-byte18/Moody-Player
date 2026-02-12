@@ -1,22 +1,75 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./MoodSongs.css";
 
-const MoodSongs = ({ Songs, songsVersion }) => {
+const MoodSongs = ({ songs = [] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState([]);
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const audioRef = useRef(null);
 
-  // Reset when new songs loaded (songsVersion changes)
+  const handleRemoveFromQueue = (event, index) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    setQueue((prevQueue) => {
+      if (!prevQueue.length) return prevQueue;
+      const nextQueue = prevQueue.filter((_, i) => i !== index);
+
+      if (!nextQueue.length) {
+        setCurrentIndex(0);
+        setIsPlaying(false);
+        return nextQueue;
+      }
+
+      if (index === currentIndex) {
+        const nextIndex = index >= nextQueue.length ? 0 : index;
+        setCurrentIndex(nextIndex);
+      } else if (index < currentIndex) {
+        setCurrentIndex((prevIndex) => Math.max(prevIndex - 1, 0));
+      }
+
+      return nextQueue;
+    });
+  };
+
+  const handleDeleteSong = async (event, songId, index) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (!songId) {
+      handleRemoveFromQueue(event, index);
+      return;
+    }
+
+    const confirmed = window.confirm("Delete this song permanently?");
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`http://localhost:3000/songs/${songId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Delete failed");
+      }
+
+      handleRemoveFromQueue(event, index);
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Failed to delete song.");
+    }
+  };
+
+  // Reset when new songs loaded
   useEffect(() => {
-    if (Songs.length > 0) {
-      setQueue(Songs);
+    if (songs.length > 0) {
+      setQueue(songs);
       setCurrentIndex(0);
       setIsPlaying(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songsVersion]);
+  }, [songs]);
 
   // Auto-play when currentIndex changes
   useEffect(() => {
@@ -106,6 +159,17 @@ const MoodSongs = ({ Songs, songsVersion }) => {
     setIsPlaying(true);
   };
 
+  const normalizedQuery = searchTerm.trim().toLowerCase();
+  const isFiltering = normalizedQuery.length > 0;
+  const filteredQueue = queue
+    .map((song, index) => ({ song, index }))
+    .filter(({ song }) => {
+      if (!isFiltering) return true;
+      const title = song.title?.toLowerCase() || "";
+      const artist = song.artist?.toLowerCase() || "";
+      return title.includes(normalizedQuery) || artist.includes(normalizedQuery);
+    });
+
   if (queue.length === 0) {
     return (
       <div className="mood-songs">
@@ -161,17 +225,26 @@ const MoodSongs = ({ Songs, songsVersion }) => {
       <div className="queue-section">
         <h2>📋 Queue</h2>
         <p className="queue-subtitle">Drag to rearrange • Click to play</p>
+        <div className="queue-search">
+          <i className="ri-search-line"></i>
+          <input
+            type="text"
+            placeholder="Search by song or artist"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </div>
         <div className="queue-list">
-          {queue.map((song, index) => (
+          {filteredQueue.map(({ song, index }) => (
             <div
-              key={index}
+              key={song._id || `${song.title}-${index}`}
               className={`queue-item ${index === currentIndex ? "active" : ""} ${
                 draggedIndex === index ? "dragging" : ""
               }`}
-              draggable
-              onDragStart={() => handleDragStart(index)}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragEnd={handleDragEnd}
+              draggable={!isFiltering}
+              onDragStart={() => !isFiltering && handleDragStart(index)}
+              onDragOver={(e) => !isFiltering && handleDragOver(e, index)}
+              onDragEnd={() => !isFiltering && handleDragEnd()}
               onClick={() => handlePlayFromQueue(index)}
             >
               <div className="queue-item-left">
@@ -183,12 +256,35 @@ const MoodSongs = ({ Songs, songsVersion }) => {
               </div>
               <div className="queue-item-right">
                 <span className="mood-tag">{song.mood}</span>
+                <button
+                  type="button"
+                  className="queue-action remove"
+                  onClick={(event) => handleRemoveFromQueue(event, index)}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-label="Remove from queue"
+                  title="Remove from queue"
+                >
+                  <i className="ri-close-line"></i>
+                </button>
+                <button
+                  type="button"
+                  className="queue-action delete"
+                  onClick={(event) => handleDeleteSong(event, song._id, index)}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-label="Delete song"
+                  title="Delete song"
+                >
+                  <i className="ri-delete-bin-6-line"></i>
+                </button>
                 {index === currentIndex && isPlaying && (
                   <i className="ri-music-2-fill playing-indicator"></i>
                 )}
               </div>
             </div>
           ))}
+          {filteredQueue.length === 0 && (
+            <div className="queue-empty">No songs match your search.</div>
+          )}
         </div>
       </div>
     </div>

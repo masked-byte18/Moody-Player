@@ -5,7 +5,15 @@ import MoodSongs from "./components/MoodSongs";
 import SongMoodDetector from "./components/SongMoodDetector";
 
 function App() {
-  const [songs, setSongs] = useState([]);
+  const [moodSongs, setMoodSongs] = useState([]);
+
+  const handleMoodDetected = (songs) => {
+    setMoodSongs(songs);
+  };
+
+  const handleSongAdded = (song) => {
+    setMoodSongs([...moodSongs, song]);
+  };
 
   return (
     <div className="app-container">
@@ -18,17 +26,18 @@ function App() {
         <div className="controls-section">
           <div className="upload-section">
             <h3>📤 Upload & Analyze Song</h3>
-            <SongMoodDetector />
+            <SongMoodDetector onSongAdded={handleSongAdded} />
           </div>
 
           <div className="mood-detection-section">
             <h3>😊 Detect Your Mood</h3>
-            <FacialExpression setSongs={setSongs} />
+            <FacialExpression onMoodDetected={handleMoodDetected} />
           </div>
         </div>
 
         <div className="player-section">
-          <MoodSongs Songs={songs} songsVersion={songs.length > 0 ? songs[0]?.title : 0} />
+          <h3>▶️ Now Playing - Mood Queue</h3>
+          <MoodSongs songs={moodSongs} />
         </div>
       </div>
     </div>
