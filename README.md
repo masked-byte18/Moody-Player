@@ -1,117 +1,247 @@
-# 🎧 Moody Player
-## AI-Powered Mood-Based Music Player
+# 🎵 Moody Player  
+### AI-Powered Music Engine Based on Your Mood
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AI-Mood%20Detection-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/AI-Emotion%20Detection-purple?style=for-the-badge" />
   <img src="https://img.shields.io/badge/React-Frontend-blue?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Node.js-Backend-green?style=for-the-badge" />
   <img src="https://img.shields.io/badge/MongoDB-Database-darkgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/face--api.js-AI%20Vision-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/WASM-Essentia-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/ImageKit-CDN-red?style=for-the-badge" />
 </p>
 
 <p align="center">
-  <strong>Feel the mood. Let AI pick the music. 🎶</strong>
+  <strong>Detect your emotion. Curate your vibe. Control your soundtrack.</strong>
 </p>
 
 ---
 
-## 🚀 About the Project
+# 🚀 Overview
 
-**Moody Player** is a next-generation music player that uses **AI-powered facial expression analysis** to detect the user’s mood and play music that perfectly matches their emotions.
+Moody Player is a **full-stack AI-powered music platform** that merges:
 
-No manual playlists.  
-No endless scrolling.  
-Just **pure vibes, driven by AI**.
+- 🎭 Facial Emotion Recognition  
+- 🎧 Audio Feature Intelligence (WASM-based)  
+- 🎵 Interactive Drag-and-Drop Queue  
+- ☁️ Cloud Storage Integration  
+- 💾 Persistent MongoDB Backend  
 
-Users can upload their own songs, and the system intelligently categorizes them by mood to create a seamless, personalized listening experience.
-
----
-
-## ⚡ Why Moody Player?
-
-Because your face already knows what you want to hear 😌  
-Moody Player reads your emotions in real time and turns them into music.
+This is not just a music player —  
+it’s a **mood-driven music system.**
 
 ---
 
-## 🧠 How It Works
+# 🧠 System Architecture
 
-1. 📸 The application accesses the user’s webcam  
-2. 🎭 Facial expressions are analyzed using **face-api.js**  
-3. 🤖 AI determines the user’s current mood  
-4. 🎵 Songs mapped to that mood are fetched from the database  
-5. 🔁 Music playback adapts dynamically as the mood changes  
+```mermaid
+flowchart LR
+    A[User Uploads Song] --> B[Essentia.js Audio Analysis]
+    B --> C[Mood Classification]
+    C --> D[MongoDB Storage]
 
-Simple flow. Smart logic. Smooth experience.
+    E[User Detects Mood] --> F[face-api.js Emotion Detection]
+    F --> G[Fetch Songs by Mood]
+    G --> H[Interactive Queue Player]
 
----
-
-## ✨ Key Features
-
-- 🎭 **Real-Time Mood Detection** using facial expressions  
-- 🎵 **Automatic Mood-Based Song Playback**  
-- ➕ **Add & Manage Custom Songs**  
-- 🧠 **AI-Based Mood Classification**  
-- 📂 **Mood-Wise Song Organization**  
-- 🎧 **Interactive & Personalized Music Player**
+    D --> G
+```
 
 ---
 
-## 🛠️ Tech Stack
+# 📊 Mood Intelligence Breakdown
 
-### 🎨 Frontend
-- React.js
+Moody Player analyzes music using:
 
-### ⚙️ Backend
-- Node.js  
-- Express.js  
+- 🎼 BPM (Tempo)
+- 🔊 Loudness
+- 🌈 Spectral Centroid
+- ⚡ Zero Crossing Rate
 
-### 🤖 AI / ML
-- face-api.js (Facial Expression & Mood Detection)
+### 🎵 Example Mood Distribution
 
-### 🗄️ Database
-- MongoDB
+```mermaid
+pie
+    title Mood Distribution
+    "Happy" : 30
+    "Sad" : 20
+    "Neutral" : 25
+    "Angry" : 15
+    "Surprised" : 10
+```
 
-### 🔗 API Communication
+---
+
+# 🎛️ Core Features
+
+## 🎭 Real-Time Mood Detection
+- Webcam-based facial analysis
+- Detects: Happy, Sad, Angry, Neutral, Surprised
+- One-click mood detection
+- Instant song recommendations
+
+---
+
+## 🎧 AI Audio Classification
+- Essentia.js (WASM) feature extraction
+- Automatic mood tagging
+- Metadata persistence
+- BPM & energy mapping logic
+
+---
+
+## 🎵 Interactive Queue System
+- Drag & drop reordering
+- Real-time search
+- Playback controls (Play, Pause, Next, Previous)
+- Persistent playback state
+- Delete / Remove options
+
+---
+
+## ☁️ Cloud + Database Integration
+- ImageKit CDN for file storage
+- MongoDB for metadata storage
+- Mood filtering endpoint
+- Persistent across sessions
+
+---
+
+# ⚡ Tech Stack
+
+## 🎨 Frontend
+- React 19 + Vite
+- face-api.js
+- Essentia.js (WASM)
 - Axios
+- CSS3 (Modern UI)
+
+## ⚙️ Backend
+- Node.js
+- Express.js
+- MongoDB + Mongoose
+- Multer
+- ImageKit CDN
 
 ---
 
-## 📊 Active Dashboard (Concept)
+# 🔄 Application Workflow
 
-- 🎶 Live Mood Indicator  
-- 🎧 Now Playing Panel  
-- 📂 Mood-Based Song Sections  
-- ➕ Upload Songs Instantly  
-- 📈 Real-Time Mood Detection Status  
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Database
 
-> Designed to feel **alive**, not static.
+    User->>Frontend: Upload Song
+    Frontend->>Frontend: Extract Audio Features
+    Frontend->>Backend: Send Metadata
+    Backend->>Database: Store Song
 
----
-
-## 🎯 Use Case
-
-- 📚 Studying → Focus music  
-- 💙 Feeling low → Comfort tracks  
-- 🔥 High energy → Hype beats  
-
-Moody Player removes the friction of playlist selection and lets **AI decide the perfect soundtrack for your emotions**.
-
----
-
-## 🔮 Future Enhancements
-
-- 📱 Mobile-Responsive UI  
-- 🌙 Dark Mode with animations  
-- 🎼 Spotify / Local Music Integration  
-- 📊 Mood Analytics Dashboard  
-- 🧠 Improved emotion detection accuracy  
+    User->>Frontend: Detect Mood
+    Frontend->>Backend: Fetch Songs by Mood
+    Backend->>Database: Query Songs
+    Database-->>Frontend: Return Matching Songs
+```
 
 ---
 
-## ❤️ Built for Vibes
+# 📈 Feature Summary Table
 
-Music hits different when it understands you.  
-**Moody Player makes music feel personal again.**
+| Capability | Implementation |
+|------------|----------------|
+| Emotion Detection | face-api.js |
+| Audio Intelligence | Essentia.js WASM |
+| Cloud Storage | ImageKit |
+| Backend API | Express.js |
+| Database | MongoDB |
+| Dev Environment | Vite |
+| File Upload Handling | Multer |
 
-⭐ **Star the repository if this project matched your vibe**
+---
+
+# 📦 Installation & Setup
+
+## 🔹 Backend Setup
+
+```bash
+cd Backend
+npm install
+
+# Create .env file with:
+# MONGODB_URI=
+# IMAGEKIT_PUBLIC_KEY=
+# IMAGEKIT_PRIVATE_KEY=
+# IMAGEKIT_URL_ENDPOINT=
+
+npx nodemon server.js
+```
+
+Backend runs on:
+
+```
+http://localhost:3000
+```
+
+---
+
+## 🔹 Frontend Setup
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+Frontend runs on:
+
+```
+http://localhost:5173
+```
+
+---
+
+# 🔌 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /songs | Upload & classify song |
+| GET | /songs?mood=happy | Fetch songs by mood |
+| DELETE | /songs/:id | Delete song |
+
+---
+
+# 🎨 UI Experience
+
+- Modern gradient header
+- Clean two-column layout
+- Smooth drag animations
+- Mood badges
+- Responsive design
+- Minimalistic typography
+
+---
+
+# 🎯 Why This Project Stands Out
+
+Moody Player demonstrates:
+
+- AI integration in frontend apps
+- WASM-based music processing
+- Facial recognition
+- Cloud file storage workflow
+- Interactive UI engineering
+- Full-stack CRUD architecture
+
+It merges **Machine Learning + Music + UX + Full Stack Engineering** into one cohesive system.
+
+---
+
+# ❤️ Final Note
+
+Music feels different when it understands you.
+
+Moody Player transforms emotion into sound —  
+turning your face into your playlist.
+
+⭐ If this project matches your vibe, consider starring the repository.
