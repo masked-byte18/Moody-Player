@@ -7,6 +7,7 @@ const MoodSongs = ({ songs = [] }) => {
   const [queue, setQueue] = useState([]);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loopCurrentSong, setLoopCurrentSong] = useState(false);
   const audioRef = useRef(null);
 
   const handleRemoveFromQueue = (event, index) => {
@@ -116,12 +117,22 @@ const MoodSongs = ({ songs = [] }) => {
   };
 
   const handleSongEnd = () => {
-    if (currentIndex < queue.length - 1) {
+    if (loopCurrentSong) {
+      // Restart the current song
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play();
+      }
+    } else if (currentIndex < queue.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Loop back to first song
       setCurrentIndex(0);
     }
+  };
+
+  const handleToggleLoop = () => {
+    setLoopCurrentSong((prev) => !prev);
   };
 
   const handleDragStart = (index) => {
@@ -217,6 +228,13 @@ const MoodSongs = ({ songs = [] }) => {
           </button>
           <button onClick={handleStop} className="control-btn stop-btn">
             <i className="ri-stop-fill"></i>
+          </button>
+          <button 
+            onClick={handleToggleLoop} 
+            className={`control-btn ${loopCurrentSong ? 'active-loop' : ''}`}
+            title={loopCurrentSong ? "Loop: On" : "Loop: Off"}
+          >
+            <i className="ri-repeat-one-line"></i>
           </button>
         </div>
       </div>

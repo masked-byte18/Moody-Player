@@ -7,12 +7,12 @@ var imagekit = new ImageKit({
     urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT
 })
 
-async function uploadFile(file) {
+async function uploadFile(file, folder = "cohort-audio") {
     const uploadable = await toFile(file.buffer, file.originalname);
     return imagekit.files.upload({
         file: uploadable,
         fileName: file.originalname,
-        folder:"cohort-audio"
+        folder
     });
 }
 

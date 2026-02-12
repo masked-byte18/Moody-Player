@@ -1,3 +1,58 @@
+:root {
+  /* Color System */
+  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --primary-gradient-reverse: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  --accent-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --bg-gradient: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 50%, #16213e 100%);
+  
+  --primary: #667eea;
+  --primary-dark: #554dc9;
+  --secondary: #764ba2;
+  --accent: #ffd369;
+  --danger: #ff6b6b;
+  
+  --text-primary: #f5f6ff;
+  --text-secondary: #cbd3f5;
+  --text-muted: #9aa3c7;
+  --text-disabled: #6b7280;
+  
+  --bg-card: rgba(17, 22, 38, 0.8);
+  --bg-card-hover: rgba(17, 22, 38, 0.95);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-glass-hover: rgba(255, 255, 255, 0.08);
+  
+  --border-default: rgba(102, 126, 234, 0.3);
+  --border-hover: rgba(102, 126, 234, 0.6);
+  --border-active: #667eea;
+  
+  /* Spacing System */
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 999px;
+  
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.2);
+  --shadow-glow: 0 4px 12px rgba(102, 126, 234, 0.15);
+  --shadow-glow-lg: 0 6px 16px rgba(102, 126, 234, 0.2);
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -14,14 +69,14 @@ html,
 body {
   min-height: 100vh;
   width: 100%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: var(--bg-gradient);
   background-attachment: fixed;
   overscroll-behavior: none;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: white;
+  color: var(--text-primary);
 }
 
 #root {
@@ -31,18 +86,20 @@ body {
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 10px;
+  background: var(--primary-gradient);
+  border-radius: var(--radius-md);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  background: var(--primary-gradient-reverse);
 }

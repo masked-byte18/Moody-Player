@@ -6,19 +6,32 @@
 .app-container {
   width: 100%;
   min-height: 100vh;
-  padding: 2rem;
+  padding: var(--space-xl);
+  padding-bottom: 7rem;
 }
 
 .app-header {
   text-align: center;
-  margin-bottom: 3rem;
-  padding: 2rem;
+  margin-bottom: var(--space-2xl);
+  padding: var(--space-xl);
+  animation: fadeInDown 0.6s ease;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .app-header h1 {
   font-size: 3.5rem;
-  margin: 0 0 0.5rem 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  margin: 0 0 var(--space-sm) 0;
+  background: var(--primary-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -27,10 +40,83 @@
 }
 
 .app-header p {
-  color: #aaa;
-  font-size: 1.2rem;
+  color: var(--text-muted);
+  font-size: 1.25rem;
   margin: 0;
-  font-weight: 300;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+
+.app-nav {
+  margin-top: 2rem;
+  display: flex;
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base);
+}
+
+.app-nav:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.app-nav a {
+  flex: 1;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-align: center;
+  padding: 1rem 0;
+  transition: all var(--transition-base);
+  position: relative;
+}
+
+.app-nav a:hover {
+  background: rgba(102, 126, 234, 0.15);
+  color: var(--text-primary);
+}
+
+.app-nav a + a::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background: var(--border-default);
+}
+
+.app-nav a.active {
+  background: var(--primary-gradient);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.app-nav a.active::before {
+  display: none;
+}
+
+.page-shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .app-content {
@@ -38,46 +124,53 @@
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1.2fr;
-  gap: 2rem;
+  gap: var(--space-xl);
 }
 
 .controls-section {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: var(--space-xl);
 }
 
 .upload-section,
 .mood-detection-section {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1.5rem;
-  padding: 2rem;
-  transition: all 0.3s ease;
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  transition: all var(--transition-slow);
+  box-shadow: var(--shadow-md);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .upload-section:hover,
 .mood-detection-section:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(102, 126, 234, 0.3);
+  background: var(--bg-glass-hover);
+  border-color: var(--border-hover);
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .upload-section h3,
 .mood-detection-section h3 {
-  margin: 0 0 1.5rem 0;
-  color: white;
-  font-size: 1.4rem;
-  font-weight: 600;
+  margin: 0 0 var(--space-lg) 0;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .player-section {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.5rem;
-  padding: 2rem;
-  backdrop-filter: blur(10px);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-md);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 @media (max-width: 1024px) {
@@ -92,7 +185,15 @@
 
 @media (max-width: 768px) {
   .app-container {
-    padding: 1rem;
+    padding: var(--space-md);
+    padding-left: var(--space-lg);
+    padding-right: var(--space-lg);
+    padding-bottom: 7rem;
+  }
+
+  .app-header {
+    padding: var(--space-md);
+    margin-bottom: var(--space-xl);
   }
 
   .app-header h1 {
@@ -101,5 +202,195 @@
 
   .app-header p {
     font-size: 1rem;
+  }
+
+  .app-nav {
+    max-width: 100%;
+  }
+
+  .app-nav a {
+    font-size: 0.95rem;
+    padding: 0.85rem 0;
+  }
+
+  .app-content {
+    gap: var(--space-lg);
+  }
+
+  .controls-section {
+    gap: var(--space-lg);
+  }
+
+  .upload-section,
+  .mood-detection-section {
+    padding: var(--space-lg);
+  }
+
+  .upload-section h3,
+  .mood-detection-section h3 {
+    font-size: 1.3rem;
+  }
+
+  .player-section {
+    padding: var(--space-lg);
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-container {
+    padding: var(--space-sm);
+    padding-bottom: 8rem;
+    padding-left: var(--space-lg);
+    padding-right: var(--space-lg);
+  }
+
+  .app-header {
+    padding: var(--space-sm);
+    margin-bottom: var(--space-lg);
+  }
+
+  .app-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .app-header p {
+    font-size: 0.9rem;
+  }
+
+  .app-nav a {
+    font-size: 0.85rem;
+    padding: 0.75rem 0;
+  }
+
+  .app-content {
+    gap: var(--space-md);
+  }
+
+  .controls-section {
+    gap: var(--space-md);
+  }
+
+  .upload-section,
+  .mood-detection-section {
+    padding: var(--space-md);
+  }
+
+  .upload-section h3,
+  .mood-detection-section h3 {
+    font-size: 1.15rem;
+    margin-bottom: var(--space-md);
+  }
+
+  .player-section {
+    padding: var(--space-sm);
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-container {
+    padding: var(--space-md);
+    padding-bottom: 9rem;
+  }
+
+  .app-header {
+    padding: var(--space-xs);
+    margin-bottom: var(--space-md);
+  }
+
+  .app-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .app-header p {
+    font-size: 0.8rem;
+  }
+
+  .app-nav a {
+    font-size: 0.8rem;
+    padding: 0.65rem 0;
+  }
+
+  .app-content {
+    gap: var(--space-sm);
+  }
+
+  .controls-section {
+    gap: var(--space-sm);
+  }
+
+  .upload-section,
+  .mood-detection-section {
+    padding: var(--space-sm);
+  }
+
+  .upload-section h3,
+  .mood-detection-section h3 {
+    font-size: 1rem;
+    margin-bottom: var(--space-sm);
+  }
+
+  .player-section {
+    padding: var(--space-sm);
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 320px) {
+  .app-container {
+    padding: var(--space-xs);
+    padding-bottom: 9rem;
+    overflow-x: auto;
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+  }
+
+  .app-header {
+    padding: var(--space-xs);
+    margin-bottom: var(--space-sm);
+  }
+
+  .app-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .app-header p {
+    font-size: 0.75rem;
+  }
+
+  .app-nav {
+    overflow-x: auto;
+  }
+
+  .app-nav a {
+    font-size: 0.75rem;
+    padding: 0.6rem 0;
+    white-space: nowrap;
+  }
+
+  .app-content {
+    gap: var(--space-xs);
+  }
+
+  .controls-section {
+    gap: var(--space-xs);
+  }
+
+  .upload-section,
+  .mood-detection-section {
+    padding: var(--space-xs);
+    overflow-x: auto;
+  }
+
+  .upload-section h3,
+  .mood-detection-section h3 {
+    font-size: 0.9rem;
+    margin-bottom: var(--space-xs);
+  }
+
+  .player-section {
+    padding: var(--space-sm);
+    overflow-x: auto;
   }
 }
