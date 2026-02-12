@@ -10,6 +10,7 @@ const QueueList = ({
   onRemove,
   onDelete,
   onReorder,
+  onSongDragStart,
 }) => {
   const [queue, setQueue] = useState([]);
   const [draggedIndex, setDraggedIndex] = useState(null);
@@ -26,6 +27,9 @@ const QueueList = ({
 
   const handleDragStart = (index) => {
     setDraggedIndex(index);
+    if (onSongDragStart) {
+      onSongDragStart(queue[index]);
+    }
   };
 
   const handleDragOver = (event, index) => {

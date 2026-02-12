@@ -32,6 +32,8 @@ const PlaylistsPage = ({
   const [songFile, setSongFile] = useState(null);
   const [moodOverride, setMoodOverride] = useState("auto");
   const [uploadingSong, setUploadingSong] = useState(false);
+  const [dragOverPlaylistId, setDragOverPlaylistId] = useState(null);
+  const [draggingSong, setDraggingSong] = useState(null);
 
   const loadPlaylists = async () => {
     try {
@@ -275,6 +277,73 @@ const PlaylistsPage = ({
     }
   };
 
+  const handleSongDragStart = (song) => {
+    setDraggingSong(song);
+  };
+
+  const handlePlaylistDragOver = (event, playlistId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (selectedPlaylist?._id !== playlistId) {
+      setDragOverPlaylistId(playlistId);
+    }
+  };
+
+  const handlePlaylistDragLeave = (event) => {
+    event.preventDefault();
+    setDragOverPlaylistId(null);
+  };
+
+  const handlePlaylistDrop = async (event, targetPlaylist) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverPlaylistId(null);
+
+    if (!draggingSong || !targetPlaylist) return;
+
+    // Don't copy if dropping on the same playlist
+    if (selectedPlaylist?._id === targetPlaylist._id) {
+      setDraggingSong(null);
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `http://localhost:3000/playlists/${targetPlaylist._id}/songs/transfer`,
+        {
+          songId: draggingSong._id,
+          sourcePlaylistId: selectedPlaylist?._id,
+        }
+      );
+
+      // Update only the target playlist (copy, not move)
+      setPlaylists((prev) =>
+        prev.map((playlist) => {
+          if (playlist._id === targetPlaylist._id) {
+            return response.data.targetPlaylist;
+          }
+          return playlist;
+        })
+      );
+
+      // Update selected playlist if it's the target
+      if (selectedPlaylist?._id === targetPlaylist._id) {
+        setSelectedPlaylist(response.data.targetPlaylist);
+      }
+
+      // Update active playlist if it's the target
+      if (activePlaylistId === targetPlaylist._id) {
+        onUpdateActivePlaylist(response.data.targetPlaylist);
+      }
+
+      setDraggingSong(null);
+    } catch (error) {
+      console.error("Song copy error:", error);
+      alert("Failed to copy song to playlist");
+      setDraggingSong(null);
+    }
+  };
+
   const isActivePlaylist =
     queueSource?.type === "playlist" && queueSource?.playlistId === selectedPlaylist?._id;
   const displayIndex = isActivePlaylist ? currentIndex : -1;
@@ -299,9 +368,12 @@ const PlaylistsPage = ({
           <div className="playlist-grid">
             {playlists.map((playlist) => (
               <div
-                className={`playlist-card ${selectedPlaylist?._id === playlist._id ? 'selected' : ''}`}
+                className={`playlist-card ${selectedPlaylist?._id === playlist._id ? 'selected' : ''} ${dragOverPlaylistId === playlist._id ? 'drag-over' : ''}`}
                 key={playlist._id}
                 onClick={() => handleSelectPlaylist(playlist)}
+                onDragOver={(event) => handlePlaylistDragOver(event, playlist._id)}
+                onDragLeave={handlePlaylistDragLeave}
+                onDrop={(event) => handlePlaylistDrop(event, playlist)}
               >
                 <div className="playlist-cover">
                   {playlist.coverImage ? (
@@ -432,6 +504,7 @@ const PlaylistsPage = ({
                 onRemove={handleRemoveFromPlaylist}
                 onDelete={handleDeleteSong}
                 onReorder={handleReorder}
+                onSongDragStart={handleSongDragStart}
               />
             </>
           ) : (

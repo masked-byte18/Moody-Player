@@ -97,6 +97,13 @@
   box-shadow: var(--shadow-md);
 }
 
+.playlist-card.drag-over {
+  border-color: var(--primary);
+  background: rgba(102, 126, 234, 0.3);
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.4);
+  transform: translateY(-4px) scale(1.02);
+}
+
 .playlist-cover {
   display: block;
   width: 20%;

@@ -193,4 +193,38 @@ router.put("/playlists/:id/songs/reorder", async (req, res) => {
   }
 });
 
+router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
+  try {
+    const { targetId } = req.params;
+    const { songId, sourcePlaylistId } = req.body;
+
+    if (!songId) {
+      return res.status(400).json({ message: "songId is required" });
+    }
+
+    const targetPlaylist = await playlistModel.findById(targetId);
+    if (!targetPlaylist) {
+      return res.status(404).json({ message: "Target playlist not found" });
+    }
+
+    // Add to target playlist if not already there (copy, don't move)
+    if (!targetPlaylist.songs.some((id) => id.toString() === songId)) {
+      targetPlaylist.songs.push(songId);
+      await targetPlaylist.save();
+    }
+
+    const updatedTargetPlaylist = await playlistModel
+      .findById(targetId)
+      .populate("songs");
+
+    res.status(200).json({
+      message: "Song copied successfully",
+      targetPlaylist: updatedTargetPlaylist,
+    });
+  } catch (error) {
+    console.error("Song copy error:", error);
+    res.status(500).json({ message: "Failed to copy song" });
+  }
+});
+
 module.exports = router;
