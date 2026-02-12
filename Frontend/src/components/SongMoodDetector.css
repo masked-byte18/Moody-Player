@@ -1,0 +1,78 @@
+.song-mood-detector {
+  width: 100%;
+}
+
+.upload-area {
+  width: 100%;
+}
+
+.upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem 2rem;
+  border: 2px dashed rgba(102, 126, 234, 0.4);
+  border-radius: 1rem;
+  background: rgba(102, 126, 234, 0.05);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: white;
+  text-align: center;
+}
+
+.upload-label:hover:not(.uploading) {
+  border-color: rgba(102, 126, 234, 0.8);
+  background: rgba(102, 126, 234, 0.1);
+  transform: translateY(-2px);
+}
+
+.upload-label.uploading {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.upload-label i {
+  font-size: 3rem;
+  color: #667eea;
+}
+
+.upload-label span {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: white;
+}
+
+.upload-label small {
+  font-size: 0.85rem;
+  color: #aaa;
+  margin-top: -0.5rem;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .upload-label {
+    padding: 2rem 1rem;
+  }
+
+  .upload-label i {
+    font-size: 2.5rem;
+  }
+
+  .upload-label span {
+    font-size: 1rem;
+  }
+}

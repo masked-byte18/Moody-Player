@@ -31,23 +31,35 @@ export default function FacialExpression({setSongs}) {
           )
           .withFaceExpressions();
 
-        let mostProbableExpression = 0;
-        let _expression = "";
-
         if (!detections || detections.length == 0) {
           console.log("No face detected");
           return;
         }
 
-        for (const expression of Object.keys(detections[0].expressions)) {
-          if (detections[0].expressions[expression] > mostProbableExpression) {
-            mostProbableExpression = detections[0].expressions[expression];
-            _expression = expression;
+        const expressions = detections[0].expressions;
+        
+        // Map face-api expressions to 5 moods: angry, sad, happy, surprised, neutral
+        const moodScores = {
+          angry: expressions.angry || 0,
+          sad: expressions.sad || 0,
+          happy: expressions.happy || 0,
+          surprised: expressions.surprised || 0,
+          neutral: (expressions.neutral || 0) + (expressions.disgusted || 0) + (expressions.fearful || 0)
+        };
+
+        let detectedMood = "neutral";
+        let maxScore = 0;
+        for (const [mood, score] of Object.entries(moodScores)) {
+          if (score > maxScore) {
+            maxScore = score;
+            detectedMood = mood;
           }
         }
         
+        console.log("Detected mood:", detectedMood, moodScores);
+        
         // get http://localhost:3000/songs?mood=happy
-        axios.get(`http://localhost:3000/songs?mood=${_expression}`).then(response=>{
+        axios.get(`http://localhost:3000/songs?mood=${detectedMood}`).then(response=>{
           console.log(response.data);
           setSongs(response.data.songs);
         })
