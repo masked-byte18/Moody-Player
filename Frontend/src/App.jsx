@@ -36,7 +36,6 @@ function App() {
         </div>
 
         <div className="player-section">
-          <h3>▶️ Now Playing - Mood Queue</h3>
           <MoodSongs songs={moodSongs} />
         </div>
       </div>
