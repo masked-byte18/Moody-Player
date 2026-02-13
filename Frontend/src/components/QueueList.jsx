@@ -11,11 +11,14 @@ const QueueList = ({
   onDelete,
   onReorder,
   onSongDragStart,
+  onSongDragEnd,
 }) => {
   const [queue, setQueue] = useState([]);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [localCurrentIndex, setLocalCurrentIndex] = useState(currentIndex);
+  const [isDraggingExternal, setIsDraggingExternal] = useState(false);
+  const [pendingReorder, setPendingReorder] = useState(null);
 
   useEffect(() => {
     setQueue(songs);
@@ -25,16 +28,20 @@ const QueueList = ({
     setLocalCurrentIndex(currentIndex);
   }, [currentIndex]);
 
-  const handleDragStart = (index) => {
+  const handleDragStart = (index, event) => {
     setDraggedIndex(index);
+    setIsDraggingExternal(false);
     if (onSongDragStart) {
       onSongDragStart(queue[index]);
     }
+    // Set a flag to detect if drag leaves the queue area
+    event.dataTransfer.effectAllowed = 'copyMove';
   };
 
   const handleDragOver = (event, index) => {
     event.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
+    // Don't reorder if dragging to external playlist
+    if (draggedIndex === null || draggedIndex === index || isDraggingExternal) return;
 
     const newQueue = [...queue];
     const draggedSong = newQueue[draggedIndex];
@@ -53,14 +60,38 @@ const QueueList = ({
     setQueue(newQueue);
     setLocalCurrentIndex(nextIndex);
     setDraggedIndex(index);
+    
+    // Store pending reorder instead of calling immediately
+    setPendingReorder({ queue: newQueue, index: nextIndex });
+  };
 
-    if (onReorder) {
-      onReorder(newQueue, nextIndex);
+  const handleDragEnd = (event) => {
+    // Only persist reorder if it was an internal drag
+    if (!isDraggingExternal && pendingReorder && onReorder) {
+      onReorder(pendingReorder.queue, pendingReorder.index);
+    }
+    
+    setDraggedIndex(null);
+    setIsDraggingExternal(false);
+    setPendingReorder(null);
+    
+    if (onSongDragEnd) {
+      onSongDragEnd();
     }
   };
 
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
+  const handleDragLeave = (event) => {
+    // Detect if dragging outside the queue list to another playlist
+    const rect = event.currentTarget.getBoundingClientRect();
+    const isLeavingQueue = 
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom;
+    
+    if (isLeavingQueue && draggedIndex !== null) {
+      setIsDraggingExternal(true);
+    }
   };
 
   const handleRemoveFromQueue = (event, index) => {
@@ -140,7 +171,7 @@ const QueueList = ({
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
-        <div className="queue-list">
+        <div className="queue-list" onDragLeave={handleDragLeave}>
           {filteredQueue.map(({ song, index }) => (
             <div
               key={song._id || `${song.title}-${index}`}
@@ -148,7 +179,7 @@ const QueueList = ({
                 index === localCurrentIndex ? "active" : ""
               } ${draggedIndex === index ? "dragging" : ""}`}
               draggable={!isFiltering}
-              onDragStart={() => !isFiltering && handleDragStart(index)}
+              onDragStart={(event) => !isFiltering && handleDragStart(index, event)}
               onDragOver={(event) => !isFiltering && handleDragOver(event, index)}
               onDragEnd={handleDragEnd}
               onClick={() => handlePlayFromQueue(index)}

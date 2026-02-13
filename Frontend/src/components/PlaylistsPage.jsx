@@ -195,42 +195,38 @@ const PlaylistsPage = ({
   const handleRemoveFromPlaylist = async ({ queue, currentIndex: nextIndex, song }) => {
     if (!selectedPlaylist || !song?._id) return;
 
-    try {
-      await axios.delete(
-        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/${song._id}`
-      );
+    // Temporary removal - UI only, doesn't persist to database
+    // Will come back on page reload
+    const updatedPlaylist = { ...selectedPlaylist, songs: queue };
+    setSelectedPlaylist(updatedPlaylist);
+    setPlaylists((prev) =>
+      prev.map((playlist) =>
+        playlist._id === selectedPlaylist._id
+          ? updatedPlaylist
+          : playlist
+      )
+    );
 
-      const updatedPlaylist = { ...selectedPlaylist, songs: queue };
-      setSelectedPlaylist(updatedPlaylist);
-      setPlaylists((prev) =>
-        prev.map((playlist) =>
-          playlist._id === selectedPlaylist._id
-            ? updatedPlaylist
-            : playlist
-        )
-      );
-
-      if (activePlaylistId === selectedPlaylist._id) {
-        onUpdateActivePlaylist(updatedPlaylist, nextIndex);
-      }
-    } catch (error) {
-      console.error("Remove song error:", error);
-      alert("Failed to remove song from playlist");
+    if (activePlaylistId === selectedPlaylist._id) {
+      onUpdateActivePlaylist(updatedPlaylist, nextIndex);
     }
   };
 
   const handleDeleteSong = async ({ songId }) => {
     if (!selectedPlaylist || !songId) return;
-    const confirmed = window.confirm("Delete this song permanently?");
+    const confirmed = window.confirm("Permanently delete this song from this playlist?");
     if (!confirmed) return;
 
     try {
+      // Delete from this playlist only (don't delete the song document)
       await axios.delete(
-        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/${songId}?delete=true`
+        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/${songId}`
       );
 
-      const nextQueue = selectedPlaylist.songs.filter((item) => item._id !== songId);
-      const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
+      // Reload from server to ensure correct state
+      const response = await axios.get(`http://localhost:3000/playlists/${selectedPlaylist._id}`);
+      const updatedPlaylist = response.data.playlist;
+      
       setSelectedPlaylist(updatedPlaylist);
       setPlaylists((prev) =>
         prev.map((playlist) =>
@@ -251,7 +247,17 @@ const PlaylistsPage = ({
 
   const handleReorder = async (nextQueue, nextIndex) => {
     if (!selectedPlaylist) return;
-    const songIds = nextQueue.map((song) => song._id).filter(Boolean);
+    
+    // Validate that all songs have valid IDs
+    const songIds = nextQueue
+      .map((song) => song?._id)
+      .filter(id => id && typeof id === 'string');
+
+    // Don't proceed if no valid IDs
+    if (songIds.length === 0) {
+      console.warn("No valid song IDs found for reorder");
+      return;
+    }
 
     const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
     setSelectedPlaylist(updatedPlaylist);
@@ -274,11 +280,19 @@ const PlaylistsPage = ({
       );
     } catch (error) {
       console.error("Reorder error:", error);
+      // Reload playlist to get correct state from server
+      if (selectedPlaylist._id) {
+        await loadSelectedPlaylist(selectedPlaylist._id);
+      }
     }
   };
 
   const handleSongDragStart = (song) => {
     setDraggingSong(song);
+  };
+
+  const handleSongDragEnd = () => {
+    setDraggingSong(null);
   };
 
   const handlePlaylistDragOver = (event, playlistId) => {
@@ -316,24 +330,25 @@ const PlaylistsPage = ({
         }
       );
 
-      // Update only the target playlist (copy, not move)
-      setPlaylists((prev) =>
-        prev.map((playlist) => {
-          if (playlist._id === targetPlaylist._id) {
-            return response.data.targetPlaylist;
-          }
-          return playlist;
-        })
-      );
+      // Check if it was a duplicate
+      if (response.data.duplicate) {
+        alert(`"${draggingSong.title}" by ${draggingSong.artist} is already in this playlist!`);
+        setDraggingSong(null);
+        return;
+      }
 
-      // Update selected playlist if it's the target
-      if (selectedPlaylist?._id === targetPlaylist._id) {
-        setSelectedPlaylist(response.data.targetPlaylist);
+      // Reload all playlists to ensure data consistency
+      await loadPlaylists();
+
+      // Reload selected playlist if it was the source
+      if (selectedPlaylist?._id) {
+        await loadSelectedPlaylist(selectedPlaylist._id);
       }
 
       // Update active playlist if it's the target
       if (activePlaylistId === targetPlaylist._id) {
-        onUpdateActivePlaylist(response.data.targetPlaylist);
+        const targetResponse = await axios.get(`http://localhost:3000/playlists/${targetPlaylist._id}`);
+        onUpdateActivePlaylist(targetResponse.data.playlist);
       }
 
       setDraggingSong(null);
@@ -505,6 +520,7 @@ const PlaylistsPage = ({
                 onDelete={handleDeleteSong}
                 onReorder={handleReorder}
                 onSongDragStart={handleSongDragStart}
+                onSongDragEnd={handleSongDragEnd}
               />
             </>
           ) : (

@@ -53,34 +53,30 @@ const PlaylistPage = ({
   const handleRemoveFromPlaylist = async ({ queue, currentIndex: nextIndex, song }) => {
     if (!playlist || !song?._id) return;
 
-    try {
-      await axios.delete(
-        `http://localhost:3000/playlists/${playlist._id}/songs/${song._id}`
-      );
-
-      const updatedPlaylist = { ...playlist, songs: queue };
-      setPlaylist(updatedPlaylist);
-      if (activePlaylistId === playlist._id) {
-        onUpdateActivePlaylist(updatedPlaylist, nextIndex);
-      }
-    } catch (error) {
-      console.error("Remove song error:", error);
-      alert("Failed to remove song from playlist");
+    // Temporary removal - UI only, doesn't persist to database
+    // Will come back on page reload
+    const updatedPlaylist = { ...playlist, songs: queue };
+    setPlaylist(updatedPlaylist);
+    if (activePlaylistId === playlist._id) {
+      onUpdateActivePlaylist(updatedPlaylist, nextIndex);
     }
   };
 
   const handleDeleteSong = async ({ songId }) => {
     if (!playlist || !songId) return;
-    const confirmed = window.confirm("Delete this song permanently?");
+    const confirmed = window.confirm("Permanently delete this song from this playlist?");
     if (!confirmed) return;
 
     try {
+      // Delete from this playlist only (don't delete the song document)
       await axios.delete(
-        `http://localhost:3000/playlists/${playlist._id}/songs/${songId}?delete=true`
+        `http://localhost:3000/playlists/${playlist._id}/songs/${songId}`
       );
 
-      const nextQueue = playlist.songs.filter((item) => item._id !== songId);
-      const updatedPlaylist = { ...playlist, songs: nextQueue };
+      // Reload from server to ensure correct state
+      const response = await axios.get(`http://localhost:3000/playlists/${playlist._id}`);
+      const updatedPlaylist = response.data.playlist;
+      
       setPlaylist(updatedPlaylist);
       if (activePlaylistId === playlist._id) {
         onUpdateActivePlaylist(updatedPlaylist);
@@ -93,7 +89,17 @@ const PlaylistPage = ({
 
   const handleReorder = async (nextQueue, nextIndex) => {
     if (!playlist) return;
-    const songIds = nextQueue.map((song) => song._id).filter(Boolean);
+    
+    // Validate that all songs have valid IDs
+    const songIds = nextQueue
+      .map((song) => song?._id)
+      .filter(id => id && typeof id === 'string');
+
+    // Don't proceed if no valid IDs
+    if (songIds.length === 0) {
+      console.warn("No valid song IDs found for reorder");
+      return;
+    }
 
     setPlaylist({ ...playlist, songs: nextQueue });
     if (activePlaylistId === playlist._id) {
@@ -107,6 +113,8 @@ const PlaylistPage = ({
       );
     } catch (error) {
       console.error("Reorder error:", error);
+      // Reload playlist to get correct state from server
+      await loadPlaylist();
     }
   };
 
