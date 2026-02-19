@@ -60,8 +60,14 @@ router.post("/playlists", imageUpload.single("cover"), async (req, res) => {
 
 router.get("/playlists", async (req, res) => {
   try {
-    const playlists = await playlistModel.find().sort({ createdAt: -1 });
-    res.status(200).json({ playlists });
+    const playlists = await playlistModel.find().populate("songs").sort({ createdAt: -1 });
+    // Filter out null entries caused by songs that were deleted from the songs collection
+    const cleaned = playlists.map((pl) => {
+      const obj = pl.toObject();
+      obj.songs = obj.songs.filter((s) => s !== null);
+      return obj;
+    });
+    res.status(200).json({ playlists: cleaned });
   } catch (error) {
     console.error("Playlist fetch error:", error);
     res.status(500).json({ message: "Failed to fetch playlists" });
@@ -78,7 +84,11 @@ router.get("/playlists/:id", async (req, res) => {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    res.status(200).json({ playlist });
+    // Filter out null entries caused by songs that were deleted from the songs collection
+    const obj = playlist.toObject();
+    obj.songs = obj.songs.filter((s) => s !== null);
+
+    res.status(200).json({ playlist: obj });
   } catch (error) {
     console.error("Playlist fetch error:", error);
     res.status(500).json({ message: "Failed to fetch playlist" });
@@ -87,10 +97,17 @@ router.get("/playlists/:id", async (req, res) => {
 
 router.delete("/playlists/:id", async (req, res) => {
   try {
-    const playlist = await playlistModel.findByIdAndDelete(req.params.id);
+    const playlist = await playlistModel.findById(req.params.id);
     if (!playlist) {
       return res.status(404).json({ message: "Playlist not found" });
     }
+
+    // Delete all song documents that belong to this playlist
+    if (playlist.songs.length > 0) {
+      await songModel.deleteMany({ _id: { $in: playlist.songs } });
+    }
+
+    await playlistModel.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Playlist deleted" });
   } catch (error) {
     console.error("Playlist delete error:", error);
@@ -179,7 +196,18 @@ router.put("/playlists/:id/songs/reorder", async (req, res) => {
       return res.status(400).json({ message: "songIds must be an array" });
     }
 
-    playlist.songs = songIds;
+    // Validate that all songIds are valid and belong to this playlist
+    const validSongIds = songIds.filter(id => {
+      if (!id) return false;
+      return playlist.songs.some(existingId => existingId.toString() === id.toString());
+    });
+
+    // Only update if we have valid song IDs
+    if (validSongIds.length === 0) {
+      return res.status(400).json({ message: "No valid song IDs provided" });
+    }
+
+    playlist.songs = validSongIds;
     await playlist.save();
 
     const updatedPlaylist = await playlistModel
@@ -189,7 +217,8 @@ router.put("/playlists/:id/songs/reorder", async (req, res) => {
     res.status(200).json({ message: "Playlist reordered", playlist: updatedPlaylist });
   } catch (error) {
     console.error("Playlist reorder error:", error);
-    res.status(500).json({ message: "Failed to reorder playlist" });
+    console.error("Error details:", error.message);
+    res.status(500).json({ message: "Failed to reorder playlist", error: error.message });
   }
 });
 
@@ -202,16 +231,44 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
       return res.status(400).json({ message: "songId is required" });
     }
 
-    const targetPlaylist = await playlistModel.findById(targetId);
+    const targetPlaylist = await playlistModel.findById(targetId).populate("songs");
     if (!targetPlaylist) {
       return res.status(404).json({ message: "Target playlist not found" });
     }
 
-    // Add to target playlist if not already there (copy, don't move)
-    if (!targetPlaylist.songs.some((id) => id.toString() === songId)) {
-      targetPlaylist.songs.push(songId);
-      await targetPlaylist.save();
+    // Find the original song
+    const originalSong = await songModel.findById(songId);
+    if (!originalSong) {
+      return res.status(404).json({ message: "Song not found" });
     }
+
+    // Check if a song with the same title and artist already exists in the target playlist
+    const isDuplicate = targetPlaylist.songs.some(
+      (song) =>
+        song.title.toLowerCase().trim() === originalSong.title.toLowerCase().trim() &&
+        song.artist.toLowerCase().trim() === originalSong.artist.toLowerCase().trim()
+    );
+
+    if (isDuplicate) {
+      return res.status(200).json({
+        message: "Song already exists in this playlist",
+        targetPlaylist: targetPlaylist,
+        duplicate: true,
+      });
+    }
+
+    // Create a NEW song document with the same data (deep copy)
+    // This ensures each playlist has its own independent song instance
+    const newSong = await songModel.create({
+      title: originalSong.title,
+      artist: originalSong.artist,
+      audio: originalSong.audio,
+      mood: originalSong.mood,
+    });
+
+    // Add the NEW song to the target playlist
+    targetPlaylist.songs.push(newSong._id);
+    await targetPlaylist.save();
 
     const updatedTargetPlaylist = await playlistModel
       .findById(targetId)
@@ -220,6 +277,7 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
     res.status(200).json({
       message: "Song copied successfully",
       targetPlaylist: updatedTargetPlaylist,
+      duplicate: false,
     });
   } catch (error) {
     console.error("Song copy error:", error);

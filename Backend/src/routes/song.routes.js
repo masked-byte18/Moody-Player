@@ -49,15 +49,18 @@ router.post("/songs", upload.single("audio"), async (req, res) => {
 });
 
 router.get("/songs", async (req, res) => {
-  const { mood } = req.query;
-  const songs = await songModel.find({
-    mood: mood,
-  });
-
-  res.status(200).json({
-    message: "Songs fetched success",
-    songs,
-  });
+  try {
+    const { mood } = req.query;
+    const filter = mood ? { mood } : {};
+    const songs = await songModel.find(filter);
+    res.status(200).json({
+      message: "Songs fetched success",
+      songs,
+    });
+  } catch (err) {
+    console.error("Songs fetch error:", err);
+    res.status(500).json({ message: "Failed to fetch songs" });
+  }
 });
 
 router.delete("/songs/:id", async (req, res) => {
