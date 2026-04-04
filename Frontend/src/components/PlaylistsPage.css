@@ -72,6 +72,10 @@
   animation: fadeIn 0.6s ease;
 }
 
+.playlist-grid-listing {
+  max-width: 980px;
+}
+
 .playlist-card {
   background: var(--bg-card);
   border: 1px solid var(--border-default);

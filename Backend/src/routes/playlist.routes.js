@@ -4,6 +4,13 @@ const uploadFile = require("../service/storage.service");
 const playlistModel = require("../models/playlist.model");
 const songModel = require("../models/song.model");
 const userProfileModel = require("../models/userProfile.model");
+const { requireAuth } = require("../middleware/auth.middleware");
+const {
+  createAudioHash,
+  createTitleKey,
+  findSongConflict,
+  removeSongIfUnused,
+} = require("../utils/song.util");
 
 const router = express.Router();
 
@@ -33,7 +40,7 @@ const ensureUserProfile = async (username, displayName = "") => {
       },
       $set: displayName ? { displayName: nextDisplayName } : {},
     },
-    { new: true, upsert: true }
+    { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
   return profile;
@@ -70,15 +77,15 @@ const imageUpload = multer({
   },
 });
 
-router.post("/playlists", imageUpload.single("cover"), async (req, res) => {
+router.post("/playlists", requireAuth, imageUpload.single("cover"), async (req, res) => {
   try {
-    const { name, description, ownerUsername, ownerDisplayName, isFeatured } = req.body;
+    const { name, description, isFeatured } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Playlist name is required" });
     }
 
-    const normalizedOwner = normalizeUsername(ownerUsername || "guest");
-    const displayName = toDisplayName(ownerDisplayName || normalizedOwner);
+    const normalizedOwner = req.user.username;
+    const displayName = toDisplayName(req.user.displayName || normalizedOwner);
     const featured = String(isFeatured) === "true";
 
     await ensureUserProfile(normalizedOwner, displayName);
@@ -122,7 +129,8 @@ router.get("/playlists", async (req, res) => {
     }
 
     if (query && String(query).trim()) {
-      const regex = new RegExp(String(query).trim(), "i");
+      const escaped = String(query).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
       filter.$or = [
         { name: regex },
         { description: regex },
@@ -149,14 +157,16 @@ router.get("/featured/playlists", async (req, res) => {
     const andConditions = [];
 
     if (owner && String(owner).trim()) {
-      const ownerRegex = new RegExp(String(owner).trim(), "i");
+      const escapedOwner = String(owner).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const ownerRegex = new RegExp(escapedOwner, "i");
       andConditions.push({
         $or: [{ ownerDisplayName: ownerRegex }, { ownerUsername: ownerRegex }],
       });
     }
 
     if (query && String(query).trim()) {
-      const searchRegex = new RegExp(String(query).trim(), "i");
+      const escapedQuery = String(query).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escapedQuery, "i");
       andConditions.push({
         $or: [
           { name: searchRegex },
@@ -199,25 +209,24 @@ router.get("/playlists/:id", async (req, res) => {
   }
 });
 
-router.delete("/playlists/:id", async (req, res) => {
+router.delete("/playlists/:id", requireAuth, async (req, res) => {
   try {
     const playlist = await playlistModel.findById(req.params.id);
     if (!playlist) {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    const actingUsername = normalizeUsername(req.query.username || "");
-    if (actingUsername && actingUsername !== playlist.ownerUsername) {
+    if (req.user.username !== playlist.ownerUsername) {
       return res.status(403).json({ message: "You can only delete your own playlist" });
     }
 
-    if (playlist.songs.length > 0) {
-      await songModel.deleteMany({ _id: { $in: playlist.songs } });
-    }
+    const songIds = playlist.songs.map((songId) => songId.toString());
 
     await userProfileModel.updateMany({}, { $pull: { savedFeatured: { playlist: playlist._id } } });
-
     await playlistModel.findByIdAndDelete(req.params.id);
+
+    await Promise.all(songIds.map((songId) => removeSongIfUnused(songId)));
+
     res.status(200).json({ message: "Playlist deleted" });
   } catch (error) {
     console.error("Playlist delete error:", error);
@@ -227,6 +236,7 @@ router.delete("/playlists/:id", async (req, res) => {
 
 router.post(
   "/playlists/:id/songs/upload",
+  requireAuth,
   audioUpload.single("audio"),
   async (req, res) => {
     try {
@@ -235,8 +245,7 @@ router.post(
         return res.status(404).json({ message: "Playlist not found" });
       }
 
-      const actingUsername = normalizeUsername(req.body.username || req.query.username || "");
-      if (actingUsername && actingUsername !== playlist.ownerUsername) {
+      if (req.user.username !== playlist.ownerUsername) {
         return res.status(403).json({ message: "You can only update your own playlist" });
       }
 
@@ -244,14 +253,34 @@ router.post(
         return res.status(400).json({ message: "No audio file uploaded" });
       }
 
-      const fileData = await uploadFile(req.file, "cohort-audio");
+      const cleanTitle = String(req.body.title || "").trim();
+      if (!cleanTitle) {
+        return res.status(400).json({ message: "title is required" });
+      }
 
-      const song = await songModel.create({
-        title: req.body.title,
-        artist: req.body.artist,
-        audio: fileData.url,
-        mood: req.body.mood,
-      });
+      const audioHash = createAudioHash(req.file.buffer);
+      let song = await findSongConflict({ title: cleanTitle, audioHash });
+
+      if (song) {
+        const alreadyInPlaylist = playlist.songs.some(
+          (songId) => songId.toString() === song._id.toString()
+        );
+
+        if (alreadyInPlaylist) {
+          return res.status(409).json({ message: "Song already exists in this playlist", song });
+        }
+      } else {
+        const fileData = await uploadFile(req.file, "cohort-audio");
+
+        song = await songModel.create({
+          title: cleanTitle,
+          titleKey: createTitleKey(cleanTitle),
+          artist: String(req.body.artist || "").trim(),
+          audio: fileData.url,
+          audioHash,
+          mood: String(req.body.mood || "").trim(),
+        });
+      }
 
       playlist.songs.push(song._id);
       await playlist.save();
@@ -270,7 +299,7 @@ router.post(
   }
 );
 
-router.delete("/playlists/:id/songs/:songId", async (req, res) => {
+router.delete("/playlists/:id/songs/:songId", requireAuth, async (req, res) => {
   try {
     const { id, songId } = req.params;
     const deleteSong = req.query.delete === "true";
@@ -280,8 +309,7 @@ router.delete("/playlists/:id/songs/:songId", async (req, res) => {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    const actingUsername = normalizeUsername(req.query.username || "");
-    if (actingUsername && actingUsername !== playlist.ownerUsername) {
+    if (req.user.username !== playlist.ownerUsername) {
       return res.status(403).json({ message: "You can only update your own playlist" });
     }
 
@@ -289,7 +317,7 @@ router.delete("/playlists/:id/songs/:songId", async (req, res) => {
     await playlist.save();
 
     if (deleteSong) {
-      await songModel.findByIdAndDelete(songId);
+      await removeSongIfUnused(songId);
     }
 
     res.status(200).json({ message: "Song removed" });
@@ -299,17 +327,16 @@ router.delete("/playlists/:id/songs/:songId", async (req, res) => {
   }
 });
 
-router.put("/playlists/:id/songs/reorder", async (req, res) => {
+router.put("/playlists/:id/songs/reorder", requireAuth, async (req, res) => {
   try {
-    const { songIds, username } = req.body;
+    const { songIds } = req.body;
     const playlist = await playlistModel.findById(req.params.id);
 
     if (!playlist) {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    const actingUsername = normalizeUsername(username || req.query.username || "");
-    if (actingUsername && actingUsername !== playlist.ownerUsername) {
+    if (req.user.username !== playlist.ownerUsername) {
       return res.status(403).json({ message: "You can only update your own playlist" });
     }
 
@@ -317,16 +344,17 @@ router.put("/playlists/:id/songs/reorder", async (req, res) => {
       return res.status(400).json({ message: "songIds must be an array" });
     }
 
-    const validSongIds = songIds.filter((id) => {
-      if (!id) return false;
-      return playlist.songs.some((existingId) => existingId.toString() === id.toString());
-    });
+    const normalizedIds = songIds.map((id) => String(id));
+    const currentIds = playlist.songs.map((id) => id.toString());
 
-    if (validSongIds.length === 0) {
-      return res.status(400).json({ message: "No valid song IDs provided" });
+    const sameLength = normalizedIds.length === currentIds.length;
+    const sameMembers = sameLength && currentIds.every((id) => normalizedIds.includes(id));
+
+    if (!sameMembers) {
+      return res.status(400).json({ message: "songIds must contain the same playlist songs" });
     }
 
-    playlist.songs = validSongIds;
+    playlist.songs = normalizedIds;
     await playlist.save();
 
     const updatedPlaylist = await playlistModel.findById(playlist._id).populate("songs");
@@ -338,10 +366,10 @@ router.put("/playlists/:id/songs/reorder", async (req, res) => {
   }
 });
 
-router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
+router.post("/playlists/:targetId/songs/transfer", requireAuth, async (req, res) => {
   try {
     const { targetId } = req.params;
-    const { songId, username } = req.body;
+    const { songId } = req.body;
 
     if (!songId) {
       return res.status(400).json({ message: "songId is required" });
@@ -352,8 +380,7 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
       return res.status(404).json({ message: "Target playlist not found" });
     }
 
-    const actingUsername = normalizeUsername(username || req.query.username || "");
-    if (actingUsername && actingUsername !== targetPlaylist.ownerUsername) {
+    if (req.user.username !== targetPlaylist.ownerUsername) {
       return res.status(403).json({ message: "You can only copy songs to your own playlist" });
     }
 
@@ -362,13 +389,11 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
       return res.status(404).json({ message: "Song not found" });
     }
 
-    const isDuplicate = targetPlaylist.songs.some(
-      (song) =>
-        song.title.toLowerCase().trim() === originalSong.title.toLowerCase().trim() &&
-        song.artist.toLowerCase().trim() === originalSong.artist.toLowerCase().trim()
+    const alreadyInPlaylist = targetPlaylist.songs.some(
+      (song) => song._id.toString() === originalSong._id.toString()
     );
 
-    if (isDuplicate) {
+    if (alreadyInPlaylist) {
       return res.status(200).json({
         message: "Song already exists in this playlist",
         targetPlaylist: cleanPlaylist(targetPlaylist),
@@ -376,14 +401,7 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
       });
     }
 
-    const newSong = await songModel.create({
-      title: originalSong.title,
-      artist: originalSong.artist,
-      audio: originalSong.audio,
-      mood: originalSong.mood,
-    });
-
-    targetPlaylist.songs.push(newSong._id);
+    targetPlaylist.songs.push(originalSong._id);
     await targetPlaylist.save();
 
     const updatedTargetPlaylist = await playlistModel.findById(targetId).populate("songs");
@@ -399,16 +417,10 @@ router.post("/playlists/:targetId/songs/transfer", async (req, res) => {
   }
 });
 
-router.get("/featured/saved", async (req, res) => {
+router.get("/featured/saved", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.query.username || "");
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
-
-    const profile = await ensureUserProfile(username);
     const populated = await userProfileModel
-      .findById(profile._id)
+      .findById(req.user._id)
       .populate({ path: "savedFeatured.playlist", populate: { path: "songs" } });
 
     const saved = (populated.savedFeatured || [])
@@ -426,20 +438,14 @@ router.get("/featured/saved", async (req, res) => {
   }
 });
 
-router.post("/featured/playlists/:id/save", async (req, res) => {
+router.post("/featured/playlists/:id/save", requireAuth, async (req, res) => {
   try {
     const playlist = await playlistModel.findById(req.params.id);
     if (!playlist || !playlist.isFeatured) {
       return res.status(404).json({ message: "Featured playlist not found" });
     }
 
-    const username = normalizeUsername(req.body.username || "");
-    const displayName = toDisplayName(req.body.displayName || username);
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
-
-    const profile = await ensureUserProfile(username, displayName);
+    const profile = await ensureUserProfile(req.user.username, req.user.displayName || req.user.username);
 
     const existing = profile.savedFeatured.find(
       (entry) => entry.playlist.toString() === playlist._id.toString()
@@ -462,17 +468,12 @@ router.post("/featured/playlists/:id/save", async (req, res) => {
   }
 });
 
-router.put("/featured/saved/:playlistId/rename", async (req, res) => {
+router.put("/featured/saved/:playlistId/rename", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.body.username || "");
     const { playlistId } = req.params;
     const localName = String(req.body.localName || "").trim();
 
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
-
-    const profile = await ensureUserProfile(username);
+    const profile = await ensureUserProfile(req.user.username, req.user.displayName || req.user.username);
     const target = profile.savedFeatured.find((entry) => entry.playlist.toString() === playlistId);
 
     if (!target) {
@@ -489,16 +490,11 @@ router.put("/featured/saved/:playlistId/rename", async (req, res) => {
   }
 });
 
-router.delete("/featured/saved/:playlistId", async (req, res) => {
+router.delete("/featured/saved/:playlistId", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.query.username || "");
     const { playlistId } = req.params;
 
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
-
-    const profile = await ensureUserProfile(username);
+    const profile = await ensureUserProfile(req.user.username, req.user.displayName || req.user.username);
     const beforeCount = profile.savedFeatured.length;
     profile.savedFeatured = profile.savedFeatured.filter((entry) => entry.playlist.toString() !== playlistId);
 
@@ -523,7 +519,8 @@ router.get("/social/users/search", async (req, res) => {
       return res.status(200).json({ users: [] });
     }
 
-    const searchRegex = new RegExp(query, "i");
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const searchRegex = new RegExp(escapedQuery, "i");
 
     const profileMatches = await userProfileModel
       .find({ $or: [{ username: searchRegex }, { displayName: searchRegex }] })
@@ -562,20 +559,18 @@ router.get("/social/users/search", async (req, res) => {
       followingSet = new Set(viewerProfile.following || []);
     }
 
-    const withStats = await Promise.all(
-      users.map(async (user) => {
-        const featuredCount = await playlistModel.countDocuments({
-          ownerUsername: user.username,
-          isFeatured: true,
-        });
+    const usernames = users.map((user) => user.username);
+    const featuredCounts = await playlistModel.aggregate([
+      { $match: { isFeatured: true, ownerUsername: { $in: usernames } } },
+      { $group: { _id: "$ownerUsername", count: { $sum: 1 } } },
+    ]);
+    const featuredCountMap = new Map(featuredCounts.map((entry) => [entry._id, entry.count]));
 
-        return {
-          ...user,
-          featuredCount,
-          isFollowing: followingSet.has(user.username),
-        };
-      })
-    );
+    const withStats = users.map((user) => ({
+      ...user,
+      featuredCount: featuredCountMap.get(user.username) || 0,
+      isFollowing: followingSet.has(user.username),
+    }));
 
     res.status(200).json({ users: withStats });
   } catch (error) {
@@ -584,30 +579,25 @@ router.get("/social/users/search", async (req, res) => {
   }
 });
 
-router.get("/social/friends", async (req, res) => {
+router.get("/social/friends", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.query.username || "");
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
+    const profile = await ensureUserProfile(req.user.username, req.user.displayName || req.user.username);
+    const following = profile.following || [];
 
-    const profile = await ensureUserProfile(username);
+    const friendsProfiles = await userProfileModel.find({ username: { $in: following } }).lean();
+    const friendMap = new Map(friendsProfiles.map((friend) => [friend.username, friend]));
 
-    const friends = await Promise.all(
-      (profile.following || []).map(async (friendUsername) => {
-        const friendProfile = await userProfileModel.findOne({ username: friendUsername }).lean();
-        const featuredCount = await playlistModel.countDocuments({
-          ownerUsername: friendUsername,
-          isFeatured: true,
-        });
+    const featuredCounts = await playlistModel.aggregate([
+      { $match: { isFeatured: true, ownerUsername: { $in: following } } },
+      { $group: { _id: "$ownerUsername", count: { $sum: 1 } } },
+    ]);
+    const featuredCountMap = new Map(featuredCounts.map((entry) => [entry._id, entry.count]));
 
-        return {
-          username: friendUsername,
-          displayName: friendProfile?.displayName || friendUsername,
-          featuredCount,
-        };
-      })
-    );
+    const friends = following.map((friendUsername) => ({
+      username: friendUsername,
+      displayName: friendMap.get(friendUsername)?.displayName || friendUsername,
+      featuredCount: featuredCountMap.get(friendUsername) || 0,
+    }));
 
     res.status(200).json({ friends });
   } catch (error) {
@@ -616,20 +606,20 @@ router.get("/social/friends", async (req, res) => {
   }
 });
 
-router.post("/social/follow/:targetUsername", async (req, res) => {
+router.post("/social/follow/:targetUsername", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.body.username || "");
+    const username = req.user.username;
     const targetUsername = normalizeUsername(req.params.targetUsername || "");
 
-    if (!username || !targetUsername) {
-      return res.status(400).json({ message: "username and target username are required" });
+    if (!targetUsername) {
+      return res.status(400).json({ message: "target username is required" });
     }
 
     if (username === targetUsername) {
       return res.status(400).json({ message: "You cannot follow yourself" });
     }
 
-    const profile = await ensureUserProfile(username, req.body.displayName || username);
+    const profile = await ensureUserProfile(username, req.user.displayName || username);
     await ensureUserProfile(targetUsername, targetUsername);
 
     if (!profile.following.includes(targetUsername)) {
@@ -644,16 +634,16 @@ router.post("/social/follow/:targetUsername", async (req, res) => {
   }
 });
 
-router.post("/social/unfollow/:targetUsername", async (req, res) => {
+router.post("/social/unfollow/:targetUsername", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.body.username || "");
+    const username = req.user.username;
     const targetUsername = normalizeUsername(req.params.targetUsername || "");
 
-    if (!username || !targetUsername) {
-      return res.status(400).json({ message: "username and target username are required" });
+    if (!targetUsername) {
+      return res.status(400).json({ message: "target username is required" });
     }
 
-    const profile = await ensureUserProfile(username);
+    const profile = await ensureUserProfile(username, req.user.displayName || username);
     profile.following = profile.following.filter((entry) => entry !== targetUsername);
     await profile.save();
 

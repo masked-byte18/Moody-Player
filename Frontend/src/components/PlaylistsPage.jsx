@@ -1,46 +1,26 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import QueueList from "./QueueList";
-import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import "./PlaylistsPage.css";
 
 const API = "http://localhost:3000";
 
-const PlaylistsPage = ({
-  queue,
-  queueSource,
-  isPlaying,
-  currentIndex,
-  activePlaylistId,
-  onPlayPlaylist,
-  onPlayPause,
-  onNext,
-  onPrevious,
-  onStop,
-  onUpdateActivePlaylist,
-  loopCurrentSong = false,
-  onToggleLoop,
-  activeUser,
-  activeDisplayName,
-}) => {
+const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
+  const navigate = useNavigate();
   const [playlists, setPlaylists] = useState([]);
-  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [coverImage, setCoverImage] = useState(null);
   const [creating, setCreating] = useState(false);
 
-  const [showAddSongModal, setShowAddSongModal] = useState(false);
-  const [songTitle, setSongTitle] = useState("");
-  const [songArtist, setSongArtist] = useState("");
-  const [songFile, setSongFile] = useState(null);
-  const [moodOverride, setMoodOverride] = useState("auto");
-  const [uploadingSong, setUploadingSong] = useState(false);
-
-  const [dragOverPlaylistId, setDragOverPlaylistId] = useState(null);
-  const [draggingSong, setDraggingSong] = useState(null);
+  const authConfig = authToken
+    ? {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    : null;
 
   const loadPlaylists = useCallback(async () => {
     try {
@@ -53,35 +33,22 @@ const PlaylistsPage = ({
     }
   }, [activeUser]);
 
-  const loadSelectedPlaylist = useCallback(async (playlistId) => {
-    if (!playlistId) return;
-    try {
-      const response = await axios.get(`${API}/playlists/${playlistId}`);
-      setSelectedPlaylist(response.data.playlist);
-    } catch (error) {
-      console.error("Failed to load playlist details:", error);
-    }
-  }, []);
-
   useEffect(() => {
     loadPlaylists();
   }, [loadPlaylists]);
 
-  useEffect(() => {
-    if (activePlaylistId) {
-      loadSelectedPlaylist(activePlaylistId);
-    }
-  }, [activePlaylistId, loadSelectedPlaylist]);
-
   const handleCreatePlaylist = async (event) => {
     event.preventDefault();
     if (!name.trim()) return;
+    if (!authConfig) {
+      alert("Please log in again to create playlists.");
+      return;
+    }
 
     setCreating(true);
     try {
       const formData = new FormData();
       formData.append("name", name.trim());
-      formData.append("ownerUsername", activeUser);
       formData.append("ownerDisplayName", activeDisplayName);
       formData.append("isFeatured", "false");
       if (description.trim()) {
@@ -91,423 +58,107 @@ const PlaylistsPage = ({
         formData.append("cover", coverImage);
       }
 
-      const response = await axios.post(`${API}/playlists`, formData);
+      const response = await axios.post(`${API}/playlists`, formData, authConfig);
 
-      setPlaylists((prev) => [...prev, response.data.playlist]);
+      setPlaylists((prev) => [response.data.playlist, ...prev]);
       setName("");
       setDescription("");
       setCoverImage(null);
       setShowModal(false);
     } catch (error) {
       console.error("Create playlist error:", error);
-      alert("Failed to create playlist");
+      alert(error?.response?.data?.message || "Failed to create playlist");
     } finally {
       setCreating(false);
     }
   };
 
-  const handleDeletePlaylist = async (playlistId) => {
+  const handleDeletePlaylist = async (event, playlistId) => {
+    event.stopPropagation();
+    if (!authConfig) {
+      alert("Please log in again to delete playlists.");
+      return;
+    }
+
     const confirmed = window.confirm("Delete this playlist?");
     if (!confirmed) return;
 
     try {
-      await axios.delete(`${API}/playlists/${playlistId}`, {
-        params: { username: activeUser },
-      });
+      await axios.delete(`${API}/playlists/${playlistId}`, authConfig);
       setPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
-      if (selectedPlaylist?._id === playlistId) {
-        setSelectedPlaylist(null);
-      }
     } catch (error) {
       console.error("Delete playlist error:", error);
-      alert("Failed to delete playlist");
+      alert(error?.response?.data?.message || "Failed to delete playlist");
     }
   };
-
-  const handleSelectPlaylist = async (playlist) => {
-    setSelectedPlaylist(playlist);
-    await loadSelectedPlaylist(playlist._id);
-  };
-
-  const handlePlayPlaylist = (index = 0) => {
-    if (selectedPlaylist) {
-      onPlayPlaylist(selectedPlaylist, index);
-    }
-  };
-
-  const handleAddSongToPlaylist = async (event) => {
-    event.preventDefault();
-    if (!selectedPlaylist || !songFile) return;
-
-    setUploadingSong(true);
-
-    let resolvedMood = "unknown";
-    if (moodOverride === "auto") {
-      resolvedMood = await analyzeAudioMood(songFile);
-    } else {
-      resolvedMood = moodOverride;
-    }
-
-    const resolvedTitle = songTitle.trim() || deriveTitleFromFile(songFile);
-    const resolvedArtist = songArtist.trim() || "Unknown";
-
-    const formData = new FormData();
-    formData.append("audio", songFile);
-    formData.append("title", resolvedTitle);
-    formData.append("artist", resolvedArtist);
-    formData.append("mood", resolvedMood);
-    formData.append("username", activeUser);
-
-    try {
-      const response = await axios.post(`${API}/playlists/${selectedPlaylist._id}/songs/upload`, formData);
-
-      const updatedPlaylist = response.data.playlist;
-      setSelectedPlaylist(updatedPlaylist);
-      setPlaylists((prev) =>
-        prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
-      );
-
-      if (activePlaylistId === selectedPlaylist._id) {
-        onUpdateActivePlaylist(updatedPlaylist);
-      }
-
-      setShowAddSongModal(false);
-      setSongTitle("");
-      setSongArtist("");
-      setSongFile(null);
-      setMoodOverride("auto");
-    } catch (error) {
-      console.error("Add song error:", error);
-      alert("Failed to add song");
-    } finally {
-      setUploadingSong(false);
-    }
-  };
-
-  const closeAddSongModal = () => {
-    setShowAddSongModal(false);
-    setSongTitle("");
-    setSongArtist("");
-    setSongFile(null);
-    setMoodOverride("auto");
-  };
-
-  const handleRemoveFromPlaylist = async ({ queue: nextQueue, currentIndex: nextIndex, song }) => {
-    if (!selectedPlaylist || !song?._id) return;
-
-    const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
-    setSelectedPlaylist(updatedPlaylist);
-    setPlaylists((prev) =>
-      prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
-    );
-
-    if (activePlaylistId === selectedPlaylist._id) {
-      onUpdateActivePlaylist(updatedPlaylist, nextIndex);
-    }
-  };
-
-  const handleDeleteSong = async ({ songId }) => {
-    if (!selectedPlaylist || !songId) return;
-    const confirmed = window.confirm("Permanently delete this song from this playlist?");
-    if (!confirmed) return;
-
-    try {
-      await axios.delete(`${API}/playlists/${selectedPlaylist._id}/songs/${songId}`, {
-        params: { username: activeUser },
-      });
-
-      const response = await axios.get(`${API}/playlists/${selectedPlaylist._id}`);
-      const updatedPlaylist = response.data.playlist;
-
-      setSelectedPlaylist(updatedPlaylist);
-      setPlaylists((prev) =>
-        prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
-      );
-
-      if (activePlaylistId === selectedPlaylist._id) {
-        onUpdateActivePlaylist(updatedPlaylist);
-      }
-    } catch (error) {
-      console.error("Delete song error:", error);
-      alert("Failed to delete song");
-    }
-  };
-
-  const handleReorder = async (nextQueue, nextIndex) => {
-    if (!selectedPlaylist) return;
-
-    const songIds = nextQueue
-      .map((song) => song?._id)
-      .filter((id) => id && typeof id === "string");
-
-    if (songIds.length === 0) {
-      return;
-    }
-
-    const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
-    setSelectedPlaylist(updatedPlaylist);
-    setPlaylists((prev) =>
-      prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
-    );
-
-    if (activePlaylistId === selectedPlaylist._id) {
-      onUpdateActivePlaylist(updatedPlaylist, nextIndex);
-    }
-
-    try {
-      await axios.put(`${API}/playlists/${selectedPlaylist._id}/songs/reorder`, {
-        songIds,
-        username: activeUser,
-      });
-    } catch (error) {
-      console.error("Reorder error:", error);
-      if (selectedPlaylist._id) {
-        await loadSelectedPlaylist(selectedPlaylist._id);
-      }
-    }
-  };
-
-  const handleSongDragStart = (song) => {
-    setDraggingSong(song);
-  };
-
-  const handleSongDragEnd = () => {
-    setDraggingSong(null);
-  };
-
-  const handlePlaylistDragOver = (event, playlistId) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (selectedPlaylist?._id !== playlistId) {
-      setDragOverPlaylistId(playlistId);
-    }
-  };
-
-  const handlePlaylistDragLeave = (event) => {
-    event.preventDefault();
-    setDragOverPlaylistId(null);
-  };
-
-  const handlePlaylistDrop = async (event, targetPlaylist) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragOverPlaylistId(null);
-
-    if (!draggingSong || !targetPlaylist) return;
-    if (selectedPlaylist?._id === targetPlaylist._id) {
-      setDraggingSong(null);
-      return;
-    }
-
-    try {
-      const response = await axios.post(`${API}/playlists/${targetPlaylist._id}/songs/transfer`, {
-        songId: draggingSong._id,
-        sourcePlaylistId: selectedPlaylist?._id,
-        username: activeUser,
-      });
-
-      if (response.data.duplicate) {
-        alert(`"${draggingSong.title}" by ${draggingSong.artist} is already in this playlist.`);
-        setDraggingSong(null);
-        return;
-      }
-
-      await loadPlaylists();
-      if (selectedPlaylist?._id) {
-        await loadSelectedPlaylist(selectedPlaylist._id);
-      }
-
-      setDraggingSong(null);
-    } catch (error) {
-      console.error("Song copy error:", error);
-      alert("Failed to copy song to playlist");
-      setDraggingSong(null);
-    }
-  };
-
-  const isActivePlaylist =
-    queueSource?.type === "playlist" && queueSource?.playlistId === selectedPlaylist?._id;
-  const displayIndex = isActivePlaylist ? currentIndex : -1;
-  const displayPlaying = isActivePlaylist ? isPlaying : false;
-  const activeQueue = isActivePlaylist ? queue : [];
-  const currentSong = isActivePlaylist && activeQueue.length > 0 ? activeQueue[currentIndex] : null;
 
   return (
     <div className="page-shell">
-      <div className="playlists-split-page">
-        <div className="playlists-left-half">
-          <div className="playlists-header">
-            <div>
-              <h2>My Playlists</h2>
-              <p>Personal playlists only. Featured is now in Discover.</p>
-            </div>
-            <button className="btn-primary" onClick={() => setShowModal(true)}>
-              Create Playlist
-            </button>
+      <div className="playlists-page">
+        <div className="playlists-header">
+          <div>
+            <h2>My Playlists</h2>
+            <p>Open any playlist in its own page to manage songs, playback, and local copying.</p>
           </div>
-
-          <div className="playlist-grid">
-            {playlists.map((playlist) => (
-              <div
-                className={`playlist-card ${selectedPlaylist?._id === playlist._id ? "selected" : ""} ${
-                  dragOverPlaylistId === playlist._id ? "drag-over" : ""
-                }`}
-                key={playlist._id}
-                onClick={() => handleSelectPlaylist(playlist)}
-                onDragOver={(event) => handlePlaylistDragOver(event, playlist._id)}
-                onDragLeave={handlePlaylistDragLeave}
-                onDrop={(event) => handlePlaylistDrop(event, playlist)}
-              >
-                <div className="playlist-cover">
-                  {playlist.coverImage ? (
-                    <img src={playlist.coverImage} alt={playlist.name} />
-                  ) : (
-                    <div className="cover-placeholder">No Cover</div>
-                  )}
-                </div>
-                <div className="playlist-body">
-                  <div className="playlist-info">
-                    <div className="playlist-title">{playlist.name}</div>
-                    <p>{playlist.description || "No description"}</p>
-                    <span>{playlist.songs?.length || 0} songs</span>
-                  </div>
-                  <div className="playlist-actions" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="queue-action delete"
-                      onClick={() => handleDeletePlaylist(playlist._id)}
-                      aria-label="Delete playlist"
-                      title="Delete playlist"
-                    >
-                      <i className="ri-delete-bin-6-line"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {playlists.length === 0 && (
-              <div className="empty-panel">No personal playlists yet. Create one to start.</div>
-            )}
-          </div>
+          <button className="btn-primary" onClick={() => setShowModal(true)}>
+            Create Playlist
+          </button>
         </div>
 
-        <div className="playlists-right-half">
-          {selectedPlaylist ? (
-            <>
-              <div className="playlists-header">
-                <div>
-                  <h2>{selectedPlaylist.name}</h2>
-                  <p>{selectedPlaylist.description || "No description"}</p>
-                </div>
-                <div className="playlist-viewer-actions">
-                  <button className="btn-primary" onClick={() => handlePlayPlaylist(0)}>
-                    Play Playlist
-                  </button>
-                  <button className="btn-secondary" onClick={() => setShowAddSongModal(true)}>
-                    Add Songs
-                  </button>
-                </div>
-              </div>
-
-              <div className="currently-playing-section">
-                <h3>Currently Playing</h3>
-                {currentSong ? (
-                  <>
-                    <div className="now-playing-card">
-                      <div className="album-art">
-                        <div className="music-icon">🎵</div>
-                      </div>
-                      <div className="track-info">
-                        <h4>{currentSong.title}</h4>
-                        <p>{currentSong.artist}</p>
-                        <span className="mood-badge">{currentSong.mood}</span>
-                      </div>
-                    </div>
-                    <div className="playback-controls">
-                      <button
-                        type="button"
-                        className="control-btn"
-                        onClick={onPrevious}
-                        disabled={!isActivePlaylist || activeQueue.length === 0}
-                      >
-                        <i className="ri-skip-back-fill"></i>
-                      </button>
-                      <button
-                        type="button"
-                        className="control-btn play-btn"
-                        onClick={onPlayPause}
-                        disabled={!isActivePlaylist || activeQueue.length === 0}
-                      >
-                        {displayPlaying ? <i className="ri-pause-fill"></i> : <i className="ri-play-fill"></i>}
-                      </button>
-                      <button
-                        type="button"
-                        className="control-btn"
-                        onClick={onNext}
-                        disabled={!isActivePlaylist || activeQueue.length === 0}
-                      >
-                        <i className="ri-skip-forward-fill"></i>
-                      </button>
-                      <button
-                        type="button"
-                        className="control-btn stop-btn"
-                        onClick={onStop}
-                        disabled={!isActivePlaylist || activeQueue.length === 0}
-                      >
-                        <i className="ri-stop-fill"></i>
-                      </button>
-                      <button
-                        type="button"
-                        className={`control-btn ${loopCurrentSong ? "active-loop" : ""}`}
-                        onClick={onToggleLoop}
-                        disabled={!isActivePlaylist || activeQueue.length === 0}
-                        title={loopCurrentSong ? "Loop: On" : "Loop: Off"}
-                      >
-                        <i className="ri-repeat-one-line"></i>
-                      </button>
-                    </div>
-                  </>
+        <div className="playlist-grid playlist-grid-listing">
+          {playlists.map((playlist) => (
+            <div
+              className="playlist-card"
+              key={playlist._id}
+              onClick={() => navigate(`/playlists/${playlist._id}`)}
+            >
+              <div className="playlist-cover">
+                {playlist.coverImage ? (
+                  <img src={playlist.coverImage} alt={playlist.name} />
                 ) : (
-                  <p className="empty-state">Play this playlist to start listening.</p>
+                  <div className="cover-placeholder">No Cover</div>
                 )}
               </div>
-
-              <QueueList
-                title="Playlist Queue"
-                songs={selectedPlaylist.songs || []}
-                currentIndex={displayIndex}
-                isPlaying={displayPlaying}
-                onPlayFromQueue={handlePlayPlaylist}
-                onRemove={handleRemoveFromPlaylist}
-                onDelete={handleDeleteSong}
-                onReorder={handleReorder}
-                onSongDragStart={handleSongDragStart}
-                onSongDragEnd={handleSongDragEnd}
-                editable
-              />
-            </>
-          ) : (
-            <div className="no-playlist-selected">
-              <div className="music-icon-large">🎵</div>
-              <h3>No Playlist Selected</h3>
-              <p>Select a personal playlist to manage its queue.</p>
+              <div className="playlist-body">
+                <div className="playlist-info">
+                  <div className="playlist-title">{playlist.name}</div>
+                  <p>{playlist.description || "No description"}</p>
+                  <span>{playlist.songs?.length || 0} songs</span>
+                </div>
+                <div className="playlist-actions" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="btn-secondary compact-btn"
+                    onClick={() => navigate(`/playlists/${playlist._id}`)}
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    className="queue-action delete"
+                    onClick={(event) => handleDeletePlaylist(event, playlist._id)}
+                    aria-label="Delete playlist"
+                    title="Delete playlist"
+                  >
+                    <i className="ri-delete-bin-6-line"></i>
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          ))}
+          {playlists.length === 0 ? (
+            <div className="empty-panel">No personal playlists yet. Create one to start.</div>
+          ) : null}
         </div>
 
-        {showModal && (
+        {showModal ? (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
               <h3>Create Playlist</h3>
               <form onSubmit={handleCreatePlaylist} className="modal-form">
                 <label>
                   Name (required)
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                  />
+                  <input type="text" value={name} onChange={(event) => setName(event.target.value)} required />
                 </label>
                 <label>
                   Description
@@ -522,7 +173,7 @@ const PlaylistsPage = ({
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(event) => setCoverImage(event.target.files[0])}
+                    onChange={(event) => setCoverImage(event.target.files?.[0] || null)}
                   />
                 </label>
                 <div className="modal-actions">
@@ -536,64 +187,7 @@ const PlaylistsPage = ({
               </form>
             </div>
           </div>
-        )}
-
-        {showAddSongModal && selectedPlaylist && (
-          <div className="modal-overlay" onClick={closeAddSongModal}>
-            <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-              <h3>Add Song to {selectedPlaylist.name}</h3>
-              <form className="modal-form" onSubmit={handleAddSongToPlaylist}>
-                <label>
-                  Song Title
-                  <input
-                    type="text"
-                    value={songTitle}
-                    onChange={(event) => setSongTitle(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Artist
-                  <input
-                    type="text"
-                    value={songArtist}
-                    onChange={(event) => setSongArtist(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Mood
-                  <select
-                    value={moodOverride}
-                    onChange={(event) => setMoodOverride(event.target.value)}
-                  >
-                    <option value="auto">Auto Detect</option>
-                    <option value="happy">Happy</option>
-                    <option value="sad">Sad</option>
-                    <option value="neutral">Neutral</option>
-                    <option value="angry">Angry</option>
-                    <option value="surprised">Surprised</option>
-                  </select>
-                </label>
-                <label>
-                  Audio File
-                  <input
-                    type="file"
-                    accept="audio/*,audio/mpeg,video/mpeg,.mp3,.mpeg"
-                    required
-                    onChange={(event) => setSongFile(event.target.files[0])}
-                  />
-                </label>
-                <div className="modal-actions">
-                  <button type="button" className="btn-secondary" onClick={closeAddSongModal}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary" disabled={uploadingSong}>
-                    {uploadingSong ? "Uploading..." : "Add Song"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -1,85 +1,177 @@
-.playlist-page {
+.playlist-page-shell {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: var(--space-xl);
 }
 
-.playlist-layout {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.2fr);
-  gap: 2rem;
-}
-
-.playlist-left,
-.playlist-right {
+.playlist-page-header {
   display: flex;
-  flex-direction: column;
-  gap: 2rem;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-lg);
 }
 
-.playlist-hero {
-  display: flex;
-  gap: 2rem;
+.playlist-page-header h2 {
+  margin: 0.55rem 0 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.playlist-page-header p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+}
+
+.playlist-back-crumb,
+.playlist-back-link {
+  display: inline-flex;
   align-items: center;
-  background: rgba(17, 22, 38, 0.8);
-  border: 1px solid rgba(102, 126, 234, 0.35);
-  border-radius: 20px;
-  padding: 1.5rem;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  text-decoration: none;
 }
 
-.playlist-cover {
-  width: 20%;
-  min-width: 160px;
-  height: 180px;
-  border-radius: 16px;
+.playlist-page-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.playlist-hero-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  background: linear-gradient(135deg, rgba(13, 19, 38, 0.96), rgba(8, 12, 26, 0.92));
+  box-shadow: var(--shadow-md);
+}
+
+.playlist-cover-art {
+  min-height: 220px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  background: rgba(102, 126, 234, 0.2);
-  flex-shrink: 0;
+  background: var(--primary-gradient);
 }
 
-.playlist-cover img {
+.playlist-cover-art img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.playlist-details h2 {
-  margin-top: 0;
+.playlist-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.playlist-kicker {
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.playlist-hero-copy h3 {
+  margin: 0;
   font-size: 2rem;
 }
 
-.playlist-details p {
-  color: #aab2d5;
-  max-width: 520px;
+.playlist-hero-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  max-width: 70ch;
 }
 
-.playlist-actions {
+.playlist-hero-meta {
   display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
-.cover-placeholder {
-  width: 100%;
-  height: 100%;
+.playlist-hero-meta span {
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.88rem;
+}
+
+.playlist-loading-card,
+.playlist-empty-card {
+  padding: var(--space-2xl);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.copy-song-description {
+  margin: 0 0 var(--space-lg);
+  color: var(--text-muted);
+}
+
+.copy-target-label {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #aab2d5;
+  flex-direction: column;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.copy-target-label select {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: rgba(8, 12, 26, 0.6);
+  color: var(--text-primary);
 }
 
 @media (max-width: 900px) {
-  .playlist-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .playlist-hero {
+  .playlist-page-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .playlist-cover {
+  .playlist-page-actions {
     width: 100%;
-    height: 220px;
+  }
+
+  .playlist-page-actions .btn-primary,
+  .playlist-page-actions .btn-secondary {
+    flex: 1;
+  }
+
+  .playlist-hero-card {
+    grid-template-columns: 1fr;
+    padding: var(--space-lg);
+  }
+
+  .playlist-cover-art {
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .playlist-page-header h2 {
+    font-size: 1.9rem;
+  }
+
+  .playlist-page-actions {
+    flex-direction: column;
+  }
+
+  .playlist-page-actions .btn-primary,
+  .playlist-page-actions .btn-secondary {
+    width: 100%;
   }
 }

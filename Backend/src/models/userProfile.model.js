@@ -37,7 +37,7 @@ const userProfileSchema = new mongoose.Schema(
     otpExpiresAt: { type: Date, default: null },
     otpPurpose: { type: String, default: "" },
     lastLoginAt: { type: Date, default: null },
-    googleSub: { type: String, default: "" },
+    googleSub: { type: String, default: "", unique: true, sparse: true },
     following: [{ type: String, lowercase: true, trim: true }],
     savedFeatured: [savedFeaturedSchema],
   },

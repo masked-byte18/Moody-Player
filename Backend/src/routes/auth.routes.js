@@ -2,10 +2,14 @@ const crypto = require("crypto");
 const dns = require("dns").promises;
 const express = require("express");
 const multer = require("multer");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const { OAuth2Client } = require("google-auth-library");
 const userProfileModel = require("../models/userProfile.model");
+const playlistModel = require("../models/playlist.model");
 const uploadFile = require("../service/storage.service");
+const { requireAuth, getJwtSecret } = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
@@ -27,48 +31,68 @@ const normalizeEmail = (value = "") => value.trim().toLowerCase();
 const hashValue = (value) =>
   crypto.createHash("sha256").update(String(value)).digest("hex");
 
-const hashPassword = (password) => {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const digest = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${digest}`;
-};
-
-const verifyPassword = (password, hash) => {
-  if (!hash || !hash.includes(":")) return false;
-  const [salt, digest] = hash.split(":");
-  const incoming = crypto.scryptSync(password, salt, 64).toString("hex");
-  return crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(digest));
-};
-
 const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
-const smtpConfigured = () =>
-  Boolean(
-    process.env.SMTP_HOST &&
-      process.env.SMTP_PORT &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASS &&
-      process.env.SMTP_FROM_EMAIL
+const createToken = (user) =>
+  jwt.sign(
+    {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email || "",
+    },
+    getJwtSecret(),
+    { expiresIn: "7d" }
   );
 
-const sendOtpEmail = async (email, otp, purpose) => {
-  if (!smtpConfigured()) {
-    console.log(`[DEV OTP] ${purpose} OTP for ${email}: ${otp}`);
-    return;
+const getMailTransportConfig = () => {
+  const service = String(process.env.SMTP_SERVICE || "").trim();
+  const host = String(process.env.SMTP_HOST || "").trim();
+  const port = Number(process.env.SMTP_PORT || 587);
+
+  if (service) {
+    return {
+      service,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: Number(process.env.SMTP_PORT) === 465,
+  return {
+    host,
+    port,
+    secure: port === 465,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-  });
+  };
+};
+
+const smtpConfigured = () =>
+  Boolean(
+    (process.env.SMTP_SERVICE || (process.env.SMTP_HOST && process.env.SMTP_PORT)) &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASS &&
+      process.env.MAIL_FROM
+  );
+
+const sendOtpEmail = async (email, otp, purpose) => {
+  const allowDevOtpFallback = String(process.env.ALLOW_DEV_OTP_FALLBACK || "").trim().toLowerCase() === "true";
+
+  if (!smtpConfigured()) {
+    if (!allowDevOtpFallback) {
+      throw new Error("SMTP is not fully configured and dev OTP fallback is disabled");
+    }
+    console.log(`[DEV OTP] ${purpose} OTP for ${email}: ${otp}`);
+    return;
+  }
+
+  const transporter = nodemailer.createTransport(getMailTransportConfig());
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM_EMAIL,
+    from: process.env.MAIL_FROM,
     to: email,
     subject: `Moody Player ${purpose} OTP`,
     text: `Your Moody Player ${purpose} OTP is ${otp}. It expires in 10 minutes.`,
@@ -125,17 +149,18 @@ router.post("/auth/signup", async (req, res) => {
     }
 
     const existingUsername = await userProfileModel.findOne({ username });
-    if (existingUsername && existingUsername.isEmailVerified) {
+    if (existingUsername && existingUsername.email && existingUsername.email !== email) {
       return res.status(409).json({ message: "Username already exists" });
     }
 
     const existingEmail = await userProfileModel.findOne({ email });
-    if (existingEmail && existingEmail.username !== username && existingEmail.isEmailVerified) {
+    if (existingEmail && existingEmail.username !== username) {
       return res.status(409).json({ message: "Email already registered" });
     }
 
     const otp = createOtp();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await userProfileModel.findOneAndUpdate(
       { username },
@@ -144,14 +169,14 @@ router.post("/auth/signup", async (req, res) => {
           username,
           displayName,
           email,
-          passwordHash: hashPassword(password),
+          passwordHash,
           isEmailVerified: false,
           otpCodeHash: hashValue(otp),
           otpExpiresAt,
           otpPurpose: "signup",
         },
       },
-      { new: true, upsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
     await sendOtpEmail(email, otp, "signup verification");
@@ -197,7 +222,11 @@ router.post("/auth/verify-signup", async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
-    return res.status(200).json({ message: "Signup verified", user: userResponse(user) });
+    return res.status(200).json({
+      message: "Signup verified",
+      token: createToken(user),
+      user: userResponse(user),
+    });
   } catch (error) {
     console.error("Verify signup error:", error);
     return res.status(500).json({ message: "Verification failed" });
@@ -217,7 +246,8 @@ router.post("/auth/login", async (req, res) => {
       $or: [{ username: identifier }, { email: identifier }],
     });
 
-    if (!user || !verifyPassword(password, user.passwordHash || "")) {
+    const passwordOk = user ? await bcrypt.compare(password, user.passwordHash || "") : false;
+    if (!user || !passwordOk) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -277,7 +307,11 @@ router.post("/auth/verify-login", async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
-    return res.status(200).json({ message: "Login successful", user: userResponse(user) });
+    return res.status(200).json({
+      message: "Login successful",
+      token: createToken(user),
+      user: userResponse(user),
+    });
   } catch (error) {
     console.error("Verify login error:", error);
     return res.status(500).json({ message: "Login verification failed" });
@@ -286,118 +320,131 @@ router.post("/auth/verify-login", async (req, res) => {
 
 router.post("/auth/google", async (req, res) => {
   try {
-    const { idToken, email: fallbackEmail, displayName: fallbackName } = req.body;
+    const { idToken } = req.body;
 
-    let email = "";
-    let displayName = "";
-    let googleSub = "";
-
-    if (idToken && process.env.GOOGLE_CLIENT_ID) {
-      const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-      const ticket = await client.verifyIdToken({
-        idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-      const payload = ticket.getPayload();
-      email = normalizeEmail(payload?.email || "");
-      displayName = String(payload?.name || "").trim();
-      googleSub = String(payload?.sub || "");
-    } else {
-      email = normalizeEmail(fallbackEmail || "");
-      displayName = String(fallbackName || "Google User").trim();
+    if (!idToken || !process.env.GOOGLE_CLIENT_ID) {
+      return res.status(400).json({ message: "Valid Google configuration and idToken are required" });
     }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = normalizeEmail(payload?.email || "");
+    const displayName = String(payload?.name || "").trim();
+    const googleSub = String(payload?.sub || "");
 
     if (!email) {
       return res.status(400).json({ message: "Google email is required" });
     }
 
-    // Block if email is already used by another user
-    const existingEmail = await userProfileModel.findOne({ email });
-    if (existingEmail) {
-      return res.status(409).json({ message: "Email already registered" });
+    let user = await userProfileModel.findOne({ email });
+    if (!user && googleSub) {
+      user = await userProfileModel.findOne({ googleSub });
     }
 
-    const usernameBase = email.split("@")[0] || "user";
-    let username = normalizeUsername(usernameBase);
+    if (user) {
+      user.displayName = displayName || user.displayName || user.username;
+      user.googleSub = googleSub || user.googleSub;
+      user.isEmailVerified = true;
+      user.lastLoginAt = new Date();
+      await user.save();
 
+      return res.status(200).json({
+        message: "Google sign-in successful",
+        token: createToken(user),
+        user: userResponse(user),
+      });
+    }
+
+    const usernameBase = normalizeUsername(email.split("@")[0] || "user");
+    let username = usernameBase || "user";
     let suffix = 1;
+
     while (await userProfileModel.exists({ username })) {
       suffix += 1;
       username = `${usernameBase}${suffix}`;
     }
 
-    const user = await userProfileModel.create({
+    user = await userProfileModel.create({
       username,
       displayName: displayName || username,
       email,
       isEmailVerified: true,
       googleSub,
+      lastLoginAt: new Date(),
     });
 
-    return res.status(200).json({ message: "Google sign-in successful", user: userResponse(user) });
+    return res.status(200).json({
+      message: "Google sign-in successful",
+      token: createToken(user),
+      user: userResponse(user),
+    });
   } catch (error) {
     console.error("Google sign-in error:", error);
     return res.status(500).json({ message: "Google sign-in failed" });
   }
 });
 
-router.get("/auth/profile", async (req, res) => {
+router.get("/auth/profile", requireAuth, async (req, res) => {
   try {
-    const username = normalizeUsername(req.query.username || "");
-    if (!username) {
-      return res.status(400).json({ message: "username is required" });
-    }
-
-    const user = await userProfileModel.findOne({ username });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    return res.status(200).json({ user: userResponse(user) });
+    return res.status(200).json({ user: userResponse(req.user) });
   } catch (error) {
     console.error("Profile fetch error:", error);
     return res.status(500).json({ message: "Failed to fetch profile" });
   }
 });
 
-router.put("/auth/profile", imageUpload.single("profilePhoto"), async (req, res) => {
+router.put("/auth/profile", requireAuth, imageUpload.single("profilePhoto"), async (req, res) => {
   try {
-    const currentUsername = normalizeUsername(req.body.currentUsername || "");
+    const currentUsername = req.user.username;
     const nextUsername = normalizeUsername(req.body.username || "");
     const displayName = String(req.body.displayName || "").trim();
 
-    if (!currentUsername || !nextUsername) {
-      return res.status(400).json({ message: "currentUsername and username are required" });
-    }
-
-    const user = await userProfileModel.findOne({ username: currentUsername });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (!nextUsername) {
+      return res.status(400).json({ message: "username is required" });
     }
 
     if (nextUsername !== currentUsername) {
       const usernameTaken = await userProfileModel.findOne({ username: nextUsername });
-      if (usernameTaken) {
+      if (usernameTaken && usernameTaken._id.toString() !== req.user._id.toString()) {
         return res.status(409).json({ message: "Username already taken" });
       }
 
       await userProfileModel.updateMany(
         { following: currentUsername },
-        { $set: { "following.$": nextUsername } }
+        { $set: { "following.$[entry]": nextUsername } },
+        { arrayFilters: [{ entry: currentUsername }] }
+      );
+
+      await playlistModel.updateMany(
+        { ownerUsername: currentUsername },
+        { $set: { ownerUsername: nextUsername } }
       );
     }
 
-    user.username = nextUsername;
-    user.displayName = displayName || nextUsername;
+    req.user.username = nextUsername;
+    req.user.displayName = displayName || nextUsername;
 
     if (req.file) {
       const uploaded = await uploadFile(req.file, "cohort-profile-photos");
-      user.profilePhoto = uploaded.url;
+      req.user.profilePhoto = uploaded.url;
     }
 
-    await user.save();
+    await req.user.save();
 
-    return res.status(200).json({ message: "Profile updated", user: userResponse(user) });
+    await playlistModel.updateMany(
+      { ownerUsername: req.user.username },
+      { $set: { ownerDisplayName: req.user.displayName } }
+    );
+
+    return res.status(200).json({
+      message: "Profile updated",
+      token: createToken(req.user),
+      user: userResponse(req.user),
+    });
   } catch (error) {
     console.error("Profile update error:", error);
     return res.status(500).json({ message: "Failed to update profile" });

@@ -11,7 +11,7 @@ const profileColor = (seed = "U") => {
   return palette[index];
 };
 
-function Sidebar({ user, onUserChange, onLogout }) {
+function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobile }) {
   const [openProfile, setOpenProfile] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(user.username || "guest");
   const [displayDraft, setDisplayDraft] = useState(user.displayName || "Guest");
@@ -42,6 +42,12 @@ function Sidebar({ user, onUserChange, onLogout }) {
     setOpenProfile(true);
     if (user.username) {
       await loadFriends();
+    }
+  };
+
+  const handleCloseMobile = () => {
+    if (typeof onCloseMobile === "function") {
+      onCloseMobile();
     }
   };
 
@@ -79,7 +85,23 @@ function Sidebar({ user, onUserChange, onLogout }) {
   };
 
   return (
-    <aside className="left-sidebar">
+    <>
+      <div
+        className={`sidebar-mobile-backdrop ${mobileOpen ? "is-open" : ""}`}
+        onClick={handleCloseMobile}
+      />
+      <aside className={`left-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+        <div className="sidebar-mobile-header">
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={handleCloseMobile}
+            aria-label="Close navigation menu"
+          >
+            <span></span>
+            <span></span>
+          </button>
+        </div>
       <div className="brand-block">
         <h2>Moody</h2>
         <p>Your Music Space</p>
@@ -100,24 +122,37 @@ function Sidebar({ user, onUserChange, onLogout }) {
       </button>
 
       <nav className="sidebar-nav">
-        <NavLink to="/">Mood</NavLink>
-        <NavLink to="/playlists">Playlists</NavLink>
-        <NavLink to="/discover">Discover</NavLink>
+        <NavLink to="/" onClick={handleCloseMobile}>
+          Mood
+        </NavLink>
+        <NavLink to="/playlists" onClick={handleCloseMobile}>
+          Playlists
+        </NavLink>
+        <NavLink to="/discover" onClick={handleCloseMobile}>
+          Discover
+        </NavLink>
       </nav>
 
       <div className="auth-links">
         {!isLoggedIn && (
           <>
-            <NavLink to="/login" className="ghost-btn">
+            <NavLink to="/login" className="ghost-btn" onClick={handleCloseMobile}>
               Log In
             </NavLink>
-            <NavLink to="/signup" className="fill-btn">
+            <NavLink to="/signup" className="fill-btn" onClick={handleCloseMobile}>
               Sign Up
             </NavLink>
           </>
         )}
         {isLoggedIn && (
-          <button type="button" className="logout-btn" onClick={onLogout}>
+          <button
+            type="button"
+            className="logout-btn"
+            onClick={() => {
+              handleCloseMobile();
+              onLogout();
+            }}
+          >
             Log Out
           </button>
         )}
@@ -175,7 +210,8 @@ function Sidebar({ user, onUserChange, onLogout }) {
           </div>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }
 

@@ -416,6 +416,61 @@
   background: rgba(255, 107, 107, 0.2);
 }
 
+.queue-action.menu {
+  color: var(--text-secondary);
+}
+
+.song-menu-wrapper {
+  position: relative;
+}
+
+.song-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  min-width: 220px;
+  padding: 0.45rem;
+  border-radius: 16px;
+  border: 1px solid var(--border-default);
+  background: rgba(10, 14, 26, 0.96);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  z-index: 30;
+}
+
+.song-menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.song-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.song-menu-item small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.song-menu-item.warning {
+  color: var(--accent);
+}
+
+.song-menu-item.danger {
+  color: var(--danger);
+}
+
 .mood-tag {
   padding: .4rem var(--space-xs) ;
   background: rgba(102, 126, 234, 0.2);
@@ -507,6 +562,11 @@
 
   .queue-item {
     padding: var(--space-md);
+  }
+
+  .song-menu-dropdown {
+    right: -0.25rem;
+    min-width: 190px;
   }
 
   .queue-action {
@@ -603,6 +663,11 @@
 
   .queue-item {
     padding: var(--space-sm);
+  }
+
+  .song-menu-dropdown {
+    right: 0;
+    min-width: 176px;
   }
 
   .queue-number {

@@ -37,7 +37,10 @@ function SignupPage({ onAuthSuccess }) {
         email,
         otp,
       });
-      onAuthSuccess(response.data.user);
+      onAuthSuccess({
+        ...response.data.user,
+        token: response.data.token || "",
+      });
       navigate("/");
     } catch (error) {
       alert(error?.response?.data?.message || "Signup verification failed");

@@ -58,8 +58,39 @@
   border: 1px solid var(--border-default) !important;
 }
 
+.google-button-shell {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.google-button-shell:not(.is-ready) {
+  display: none;
+}
+
+.google-button-slot {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  justify-content: center;
+}
+
 .auth-hint {
   margin-top: var(--space-md);
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  .auth-card {
+    width: min(100%, 92vw);
+    padding: var(--space-lg);
+  }
+
+  .google-button-slot {
+    max-width: 100%;
+  }
 }

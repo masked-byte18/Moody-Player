@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import "./App.css";
 import MoodPage from "./components/MoodPage";
+import PlaylistPage from "./components/PlaylistPage";
 import PlaylistsPage from "./components/PlaylistsPage";
 import FeaturedHubPage from "./components/FeaturedHubPage";
 import PlayerFooter from "./components/PlayerFooter";
@@ -15,6 +16,7 @@ function App() {
     username: localStorage.getItem("moody-active-user") || "guest",
     displayName: localStorage.getItem("moody-display-name") || "Guest",
     profilePhoto: localStorage.getItem("moody-profile-photo") || "",
+    token: localStorage.getItem("moody-auth-token") || "",
   }));
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem("moody-theme");
@@ -26,6 +28,7 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopCurrentSong, setLoopCurrentSong] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const startQueue = (songs, source, index = 0) => {
     setQueue(songs);
@@ -129,17 +132,24 @@ function App() {
     const normalized = (nextUser?.username || "guest").trim().toLowerCase() || "guest";
     const nextDisplayName = (nextUser?.displayName || normalized).trim() || normalized;
     const nextProfilePhoto = nextUser?.profilePhoto || "";
+    const nextToken = nextUser?.token || "";
 
     const merged = {
       username: normalized,
       displayName: nextDisplayName,
       profilePhoto: nextProfilePhoto,
+      token: nextToken,
     };
 
     setUserState(merged);
     localStorage.setItem("moody-active-user", merged.username);
     localStorage.setItem("moody-display-name", merged.displayName);
     localStorage.setItem("moody-profile-photo", merged.profilePhoto);
+    if (merged.token) {
+      localStorage.setItem("moody-auth-token", merged.token);
+    } else {
+      localStorage.removeItem("moody-auth-token");
+    }
   };
 
   const handleLogout = () => {
@@ -147,11 +157,14 @@ function App() {
       username: "guest",
       displayName: "Guest",
       profilePhoto: "",
+      token: "",
     };
     setUserState(guest);
     localStorage.setItem("moody-active-user", guest.username);
     localStorage.setItem("moody-display-name", guest.displayName);
     localStorage.setItem("moody-profile-photo", "");
+    localStorage.removeItem("moody-auth-token");
+    setMobileSidebarOpen(false);
   };
 
   const handleThemeToggle = () => {
@@ -169,10 +182,26 @@ function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar user={userState} onUserChange={handleUserStateChange} onLogout={handleLogout} />
+      <Sidebar
+        user={userState}
+        onUserChange={handleUserStateChange}
+        onLogout={handleLogout}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
       <div className="app-main">
         <header className="app-topbar">
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
           <div>
             <h1>Moody Player</h1>
             <p>Emotion-aware music with social discovery</p>
@@ -223,6 +252,29 @@ function App() {
               onToggleLoop={handleToggleLoop}
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
+              authToken={userState.token}
+            />
+          }
+        />
+        <Route
+          path="/playlists/:id"
+          element={
+            <PlaylistPage
+              activePlaylistId={queueSource.playlistId}
+              queue={queue}
+              queueSource={queueSource}
+              isPlaying={isPlaying}
+              currentIndex={currentIndex}
+              onPlayPlaylist={handlePlayPlaylist}
+              onPlayPause={handlePlayPause}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              onStop={handleStop}
+              onUpdateActivePlaylist={handleUpdateActivePlaylist}
+              loopCurrentSong={loopCurrentSong}
+              onToggleLoop={handleToggleLoop}
+              activeUser={userState.username}
+              authToken={userState.token}
             />
           }
         />
@@ -243,6 +295,7 @@ function App() {
               onToggleLoop={handleToggleLoop}
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
+              authToken={userState.token}
             />
           }
         />
