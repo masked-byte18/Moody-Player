@@ -1,0 +1,50 @@
+.featured-left-pane {
+  gap: var(--space-xl);
+}
+
+.discover-profile-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-md);
+}
+
+.song-search-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-md);
+}
+
+.song-search-panel h4 {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.song-search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-sm);
+}
+
+.song-search-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.75rem;
+}
+
+.song-search-card p,
+.song-search-card small {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1024px) {
+  .featured-left-pane {
+    gap: var(--space-lg);
+  }
+}

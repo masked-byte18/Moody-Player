@@ -1,11 +1,25 @@
 import { useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import "./App.css";
 import MoodPage from "./components/MoodPage";
 import PlaylistsPage from "./components/PlaylistsPage";
+import FeaturedHubPage from "./components/FeaturedHubPage";
 import PlayerFooter from "./components/PlayerFooter";
+import Sidebar from "./components/Sidebar";
+import ThemeSwitcher from "./components/ThemeSwitcher";
+import LoginPage from "./components/LoginPage";
+import SignupPage from "./components/SignupPage";
 
 function App() {
+  const [userState, setUserState] = useState(() => ({
+    username: localStorage.getItem("moody-active-user") || "guest",
+    displayName: localStorage.getItem("moody-display-name") || "Guest",
+    profilePhoto: localStorage.getItem("moody-profile-photo") || "",
+  }));
+  const [theme, setTheme] = useState(() => {
+    const stored = localStorage.getItem("moody-theme");
+    return stored === "charcoal" || stored === "deepblue" ? stored : "charcoal";
+  });
   const [moodSongs, setMoodSongs] = useState([]);
   const [queue, setQueue] = useState([]);
   const [queueSource, setQueueSource] = useState({ type: "mood", playlistId: null });
@@ -111,18 +125,62 @@ function App() {
     setLoopCurrentSong((prev) => !prev);
   };
 
-  return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1>🎵 Moody Player</h1>
-        <p>AI-Powered Music Based on Your Mood</p>
-        <nav className="app-nav">
-          <NavLink to="/">Mood</NavLink>
-          <NavLink to="/playlists">Playlists</NavLink>
-        </nav>
-      </header>
+  const handleUserStateChange = (nextUser) => {
+    const normalized = (nextUser?.username || "guest").trim().toLowerCase() || "guest";
+    const nextDisplayName = (nextUser?.displayName || normalized).trim() || normalized;
+    const nextProfilePhoto = nextUser?.profilePhoto || "";
 
-      <Routes>
+    const merged = {
+      username: normalized,
+      displayName: nextDisplayName,
+      profilePhoto: nextProfilePhoto,
+    };
+
+    setUserState(merged);
+    localStorage.setItem("moody-active-user", merged.username);
+    localStorage.setItem("moody-display-name", merged.displayName);
+    localStorage.setItem("moody-profile-photo", merged.profilePhoto);
+  };
+
+  const handleLogout = () => {
+    const guest = {
+      username: "guest",
+      displayName: "Guest",
+      profilePhoto: "",
+    };
+    setUserState(guest);
+    localStorage.setItem("moody-active-user", guest.username);
+    localStorage.setItem("moody-display-name", guest.displayName);
+    localStorage.setItem("moody-profile-photo", "");
+  };
+
+  const handleThemeToggle = () => {
+    const options = ["charcoal", "deepblue"];
+    const index = options.indexOf(theme);
+    const next = options[(Math.max(index, 0) + 1) % options.length];
+    setTheme(next);
+    localStorage.setItem("moody-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  };
+
+  if (document.documentElement.getAttribute("data-theme") !== theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+
+  return (
+    <div className="app-layout">
+      <Sidebar user={userState} onUserChange={handleUserStateChange} onLogout={handleLogout} />
+
+      <div className="app-main">
+        <header className="app-topbar">
+          <div>
+            <h1>Moody Player</h1>
+            <p>Emotion-aware music with social discovery</p>
+          </div>
+          <ThemeSwitcher theme={theme} onToggleTheme={handleThemeToggle} />
+        </header>
+
+        <Routes>
         <Route
           path="/"
           element={
@@ -163,22 +221,47 @@ function App() {
               onUpdateActivePlaylist={handleUpdateActivePlaylist}
               loopCurrentSong={loopCurrentSong}
               onToggleLoop={handleToggleLoop}
+              activeUser={userState.username}
+              activeDisplayName={userState.displayName}
             />
           }
         />
-      </Routes>
+        <Route
+          path="/discover"
+          element={
+            <FeaturedHubPage
+              queue={queue}
+              queueSource={queueSource}
+              isPlaying={isPlaying}
+              currentIndex={currentIndex}
+              onPlayPlaylist={handlePlayPlaylist}
+              onPlayPause={handlePlayPause}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              onStop={handleStop}
+              loopCurrentSong={loopCurrentSong}
+              onToggleLoop={handleToggleLoop}
+              activeUser={userState.username}
+              activeDisplayName={userState.displayName}
+            />
+          }
+        />
+        <Route path="/login" element={<LoginPage onAuthSuccess={handleUserStateChange} />} />
+        <Route path="/signup" element={<SignupPage onAuthSuccess={handleUserStateChange} />} />
+        </Routes>
 
-      <PlayerFooter
-        queue={queue}
-        currentIndex={currentIndex}
-        isPlaying={isPlaying}
-        onPlayPause={handlePlayPause}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-        onStop={handleStop}
-        loopCurrentSong={loopCurrentSong}
-        onToggleLoop={handleToggleLoop}
-      />
+        <PlayerFooter
+          queue={queue}
+          currentIndex={currentIndex}
+          isPlaying={isPlaying}
+          onPlayPause={handlePlayPause}
+          onNext={handleNext}
+          onPrevious={handlePrevious}
+          onStop={handleStop}
+          loopCurrentSong={loopCurrentSong}
+          onToggleLoop={handleToggleLoop}
+        />
+      </div>
     </div>
   );
 }

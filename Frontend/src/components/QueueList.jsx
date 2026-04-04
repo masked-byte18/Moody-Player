@@ -12,6 +12,7 @@ const QueueList = ({
   onReorder,
   onSongDragStart,
   onSongDragEnd,
+  editable = true,
 }) => {
   const [queue, setQueue] = useState([]);
   const [draggedIndex, setDraggedIndex] = useState(null);
@@ -65,9 +66,9 @@ const QueueList = ({
     setPendingReorder({ queue: newQueue, index: nextIndex });
   };
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = () => {
     // Only persist reorder if it was an internal drag
-    if (!isDraggingExternal && pendingReorder && onReorder) {
+    if (editable && !isDraggingExternal && pendingReorder && onReorder) {
       onReorder(pendingReorder.queue, pendingReorder.index);
     }
     
@@ -161,7 +162,9 @@ const QueueList = ({
     <div className="mood-songs">
       <div className="queue-section">
         <h2>{title}</h2>
-        <p className="queue-subtitle">Drag to rearrange • Click to play</p>
+        <p className="queue-subtitle">
+          {editable ? "Drag to rearrange • Click to play" : "Click to play"}
+        </p>
         <div className="queue-search">
           <i className="ri-search-line"></i>
           <input
@@ -171,17 +174,17 @@ const QueueList = ({
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
-        <div className="queue-list" onDragLeave={handleDragLeave}>
+        <div className="queue-list" onDragLeave={editable ? handleDragLeave : undefined}>
           {filteredQueue.map(({ song, index }) => (
             <div
               key={song._id || `${song.title}-${index}`}
               className={`queue-item ${
                 index === localCurrentIndex ? "active" : ""
               } ${draggedIndex === index ? "dragging" : ""}`}
-              draggable={!isFiltering}
-              onDragStart={(event) => !isFiltering && handleDragStart(index, event)}
-              onDragOver={(event) => !isFiltering && handleDragOver(event, index)}
-              onDragEnd={handleDragEnd}
+              draggable={editable && !isFiltering}
+              onDragStart={(event) => editable && !isFiltering && handleDragStart(index, event)}
+              onDragOver={(event) => editable && !isFiltering && handleDragOver(event, index)}
+              onDragEnd={editable ? handleDragEnd : undefined}
               onClick={() => handlePlayFromQueue(index)}
             >
               <div className="queue-item-left">
@@ -193,26 +196,30 @@ const QueueList = ({
               </div>
               <div className="queue-item-right">
                 <span className="mood-tag">{song.mood}</span>
-                <button
-                  type="button"
-                  className="queue-action remove"
-                  onClick={(event) => handleRemoveFromQueue(event, index)}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  aria-label="Remove from queue"
-                  title="Remove from queue"
-                >
-                  <i className="ri-close-line"></i>
-                </button>
-                <button
-                  type="button"
-                  className="queue-action delete"
-                  onClick={(event) => handleDeleteSong(event, song._id, index)}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  aria-label="Delete song"
-                  title="Delete song"
-                >
-                  <i className="ri-delete-bin-6-line"></i>
-                </button>
+                {editable && (
+                  <button
+                    type="button"
+                    className="queue-action remove"
+                    onClick={(event) => handleRemoveFromQueue(event, index)}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-label="Remove from queue"
+                    title="Remove from queue"
+                  >
+                    <i className="ri-close-line"></i>
+                  </button>
+                )}
+                {editable && (
+                  <button
+                    type="button"
+                    className="queue-action delete"
+                    onClick={(event) => handleDeleteSong(event, song._id, index)}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-label="Delete song"
+                    title="Delete song"
+                  >
+                    <i className="ri-delete-bin-6-line"></i>
+                  </button>
+                )}
                 {index === localCurrentIndex && isPlaying && (
                   <i className="ri-music-2-fill playing-indicator"></i>
                 )}

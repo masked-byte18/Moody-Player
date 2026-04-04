@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import QueueList from "./QueueList";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import "./PlaylistsPage.css";
+
+const API = "http://localhost:3000";
 
 const PlaylistsPage = ({
   queue,
@@ -18,50 +20,58 @@ const PlaylistsPage = ({
   onUpdateActivePlaylist,
   loopCurrentSong = false,
   onToggleLoop,
+  activeUser,
+  activeDisplayName,
 }) => {
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [coverImage, setCoverImage] = useState(null);
   const [creating, setCreating] = useState(false);
+
   const [showAddSongModal, setShowAddSongModal] = useState(false);
   const [songTitle, setSongTitle] = useState("");
   const [songArtist, setSongArtist] = useState("");
   const [songFile, setSongFile] = useState(null);
   const [moodOverride, setMoodOverride] = useState("auto");
   const [uploadingSong, setUploadingSong] = useState(false);
+
   const [dragOverPlaylistId, setDragOverPlaylistId] = useState(null);
   const [draggingSong, setDraggingSong] = useState(null);
 
-  const loadPlaylists = async () => {
+  const loadPlaylists = useCallback(async () => {
     try {
-      const response = await axios.get("http://localhost:3000/playlists");
+      const response = await axios.get(`${API}/playlists`, {
+        params: { username: activeUser, scope: "personal" },
+      });
       setPlaylists(response.data.playlists || []);
     } catch (error) {
       console.error("Failed to load playlists:", error);
     }
-  };
+  }, [activeUser]);
 
-  const loadSelectedPlaylist = async (playlistId) => {
+  const loadSelectedPlaylist = useCallback(async (playlistId) => {
+    if (!playlistId) return;
     try {
-      const response = await axios.get(`http://localhost:3000/playlists/${playlistId}`);
+      const response = await axios.get(`${API}/playlists/${playlistId}`);
       setSelectedPlaylist(response.data.playlist);
     } catch (error) {
       console.error("Failed to load playlist details:", error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPlaylists();
-  }, []);
+  }, [loadPlaylists]);
 
   useEffect(() => {
     if (activePlaylistId) {
       loadSelectedPlaylist(activePlaylistId);
     }
-  }, [activePlaylistId]);
+  }, [activePlaylistId, loadSelectedPlaylist]);
 
   const handleCreatePlaylist = async (event) => {
     event.preventDefault();
@@ -71,6 +81,9 @@ const PlaylistsPage = ({
     try {
       const formData = new FormData();
       formData.append("name", name.trim());
+      formData.append("ownerUsername", activeUser);
+      formData.append("ownerDisplayName", activeDisplayName);
+      formData.append("isFeatured", "false");
       if (description.trim()) {
         formData.append("description", description.trim());
       }
@@ -78,10 +91,7 @@ const PlaylistsPage = ({
         formData.append("cover", coverImage);
       }
 
-      const response = await axios.post(
-        "http://localhost:3000/playlists",
-        formData
-      );
+      const response = await axios.post(`${API}/playlists`, formData);
 
       setPlaylists((prev) => [...prev, response.data.playlist]);
       setName("");
@@ -101,26 +111,22 @@ const PlaylistsPage = ({
     if (!confirmed) return;
 
     try {
-      await axios.delete(`http://localhost:3000/playlists/${playlistId}`);
+      await axios.delete(`${API}/playlists/${playlistId}`, {
+        params: { username: activeUser },
+      });
       setPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
+      if (selectedPlaylist?._id === playlistId) {
+        setSelectedPlaylist(null);
+      }
     } catch (error) {
       console.error("Delete playlist error:", error);
       alert("Failed to delete playlist");
     }
   };
 
-  const openAddSongModal = () => {
-    setShowAddSongModal(true);
-  };
-
   const handleSelectPlaylist = async (playlist) => {
     setSelectedPlaylist(playlist);
-    try {
-      const response = await axios.get(`http://localhost:3000/playlists/${playlist._id}`);
-      setSelectedPlaylist(response.data.playlist);
-    } catch (error) {
-      console.error("Failed to load playlist details:", error);
-    }
+    await loadSelectedPlaylist(playlist._id);
   };
 
   const handlePlayPlaylist = (index = 0) => {
@@ -150,21 +156,15 @@ const PlaylistsPage = ({
     formData.append("title", resolvedTitle);
     formData.append("artist", resolvedArtist);
     formData.append("mood", resolvedMood);
+    formData.append("username", activeUser);
 
     try {
-      const response = await axios.post(
-        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/upload`,
-        formData
-      );
+      const response = await axios.post(`${API}/playlists/${selectedPlaylist._id}/songs/upload`, formData);
 
       const updatedPlaylist = response.data.playlist;
       setSelectedPlaylist(updatedPlaylist);
       setPlaylists((prev) =>
-        prev.map((playlist) =>
-          playlist._id === selectedPlaylist._id
-            ? updatedPlaylist
-            : playlist
-        )
+        prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
       );
 
       if (activePlaylistId === selectedPlaylist._id) {
@@ -192,19 +192,13 @@ const PlaylistsPage = ({
     setMoodOverride("auto");
   };
 
-  const handleRemoveFromPlaylist = async ({ queue, currentIndex: nextIndex, song }) => {
+  const handleRemoveFromPlaylist = async ({ queue: nextQueue, currentIndex: nextIndex, song }) => {
     if (!selectedPlaylist || !song?._id) return;
 
-    // Temporary removal - UI only, doesn't persist to database
-    // Will come back on page reload
-    const updatedPlaylist = { ...selectedPlaylist, songs: queue };
+    const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
     setSelectedPlaylist(updatedPlaylist);
     setPlaylists((prev) =>
-      prev.map((playlist) =>
-        playlist._id === selectedPlaylist._id
-          ? updatedPlaylist
-          : playlist
-      )
+      prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
     );
 
     if (activePlaylistId === selectedPlaylist._id) {
@@ -218,22 +212,16 @@ const PlaylistsPage = ({
     if (!confirmed) return;
 
     try {
-      // Delete from this playlist only (don't delete the song document)
-      await axios.delete(
-        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/${songId}`
-      );
+      await axios.delete(`${API}/playlists/${selectedPlaylist._id}/songs/${songId}`, {
+        params: { username: activeUser },
+      });
 
-      // Reload from server to ensure correct state
-      const response = await axios.get(`http://localhost:3000/playlists/${selectedPlaylist._id}`);
+      const response = await axios.get(`${API}/playlists/${selectedPlaylist._id}`);
       const updatedPlaylist = response.data.playlist;
-      
+
       setSelectedPlaylist(updatedPlaylist);
       setPlaylists((prev) =>
-        prev.map((playlist) =>
-          playlist._id === selectedPlaylist._id
-            ? updatedPlaylist
-            : playlist
-        )
+        prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
       );
 
       if (activePlaylistId === selectedPlaylist._id) {
@@ -247,26 +235,19 @@ const PlaylistsPage = ({
 
   const handleReorder = async (nextQueue, nextIndex) => {
     if (!selectedPlaylist) return;
-    
-    // Validate that all songs have valid IDs
+
     const songIds = nextQueue
       .map((song) => song?._id)
-      .filter(id => id && typeof id === 'string');
+      .filter((id) => id && typeof id === "string");
 
-    // Don't proceed if no valid IDs
     if (songIds.length === 0) {
-      console.warn("No valid song IDs found for reorder");
       return;
     }
 
     const updatedPlaylist = { ...selectedPlaylist, songs: nextQueue };
     setSelectedPlaylist(updatedPlaylist);
     setPlaylists((prev) =>
-      prev.map((playlist) =>
-        playlist._id === selectedPlaylist._id
-          ? updatedPlaylist
-          : playlist
-      )
+      prev.map((playlist) => (playlist._id === selectedPlaylist._id ? updatedPlaylist : playlist))
     );
 
     if (activePlaylistId === selectedPlaylist._id) {
@@ -274,13 +255,12 @@ const PlaylistsPage = ({
     }
 
     try {
-      await axios.put(
-        `http://localhost:3000/playlists/${selectedPlaylist._id}/songs/reorder`,
-        { songIds }
-      );
+      await axios.put(`${API}/playlists/${selectedPlaylist._id}/songs/reorder`, {
+        songIds,
+        username: activeUser,
+      });
     } catch (error) {
       console.error("Reorder error:", error);
-      // Reload playlist to get correct state from server
       if (selectedPlaylist._id) {
         await loadSelectedPlaylist(selectedPlaylist._id);
       }
@@ -314,41 +294,27 @@ const PlaylistsPage = ({
     setDragOverPlaylistId(null);
 
     if (!draggingSong || !targetPlaylist) return;
-
-    // Don't copy if dropping on the same playlist
     if (selectedPlaylist?._id === targetPlaylist._id) {
       setDraggingSong(null);
       return;
     }
 
     try {
-      const response = await axios.post(
-        `http://localhost:3000/playlists/${targetPlaylist._id}/songs/transfer`,
-        {
-          songId: draggingSong._id,
-          sourcePlaylistId: selectedPlaylist?._id,
-        }
-      );
+      const response = await axios.post(`${API}/playlists/${targetPlaylist._id}/songs/transfer`, {
+        songId: draggingSong._id,
+        sourcePlaylistId: selectedPlaylist?._id,
+        username: activeUser,
+      });
 
-      // Check if it was a duplicate
       if (response.data.duplicate) {
-        alert(`"${draggingSong.title}" by ${draggingSong.artist} is already in this playlist!`);
+        alert(`"${draggingSong.title}" by ${draggingSong.artist} is already in this playlist.`);
         setDraggingSong(null);
         return;
       }
 
-      // Reload all playlists to ensure data consistency
       await loadPlaylists();
-
-      // Reload selected playlist if it was the source
       if (selectedPlaylist?._id) {
         await loadSelectedPlaylist(selectedPlaylist._id);
-      }
-
-      // Update active playlist if it's the target
-      if (activePlaylistId === targetPlaylist._id) {
-        const targetResponse = await axios.get(`http://localhost:3000/playlists/${targetPlaylist._id}`);
-        onUpdateActivePlaylist(targetResponse.data.playlist);
       }
 
       setDraggingSong(null);
@@ -372,8 +338,8 @@ const PlaylistsPage = ({
         <div className="playlists-left-half">
           <div className="playlists-header">
             <div>
-              <h2>Playlists</h2>
-              <p>Build playlists and organize songs by mood.</p>
+              <h2>My Playlists</h2>
+              <p>Personal playlists only. Featured is now in Discover.</p>
             </div>
             <button className="btn-primary" onClick={() => setShowModal(true)}>
               Create Playlist
@@ -383,7 +349,9 @@ const PlaylistsPage = ({
           <div className="playlist-grid">
             {playlists.map((playlist) => (
               <div
-                className={`playlist-card ${selectedPlaylist?._id === playlist._id ? 'selected' : ''} ${dragOverPlaylistId === playlist._id ? 'drag-over' : ''}`}
+                className={`playlist-card ${selectedPlaylist?._id === playlist._id ? "selected" : ""} ${
+                  dragOverPlaylistId === playlist._id ? "drag-over" : ""
+                }`}
                 key={playlist._id}
                 onClick={() => handleSelectPlaylist(playlist)}
                 onDragOver={(event) => handlePlaylistDragOver(event, playlist._id)}
@@ -399,13 +367,11 @@ const PlaylistsPage = ({
                 </div>
                 <div className="playlist-body">
                   <div className="playlist-info">
-                    <div className="playlist-title">
-                      {playlist.name}
-                    </div>
+                    <div className="playlist-title">{playlist.name}</div>
                     <p>{playlist.description || "No description"}</p>
                     <span>{playlist.songs?.length || 0} songs</span>
                   </div>
-                  <div className="playlist-actions" onClick={(e) => e.stopPropagation()}>
+                  <div className="playlist-actions" onClick={(event) => event.stopPropagation()}>
                     <button
                       type="button"
                       className="queue-action delete"
@@ -420,7 +386,7 @@ const PlaylistsPage = ({
               </div>
             ))}
             {playlists.length === 0 && (
-              <div className="empty-panel">No playlists yet. Create one to start.</div>
+              <div className="empty-panel">No personal playlists yet. Create one to start.</div>
             )}
           </div>
         </div>
@@ -437,7 +403,7 @@ const PlaylistsPage = ({
                   <button className="btn-primary" onClick={() => handlePlayPlaylist(0)}>
                     Play Playlist
                   </button>
-                  <button className="btn-secondary" onClick={() => openAddSongModal()}>
+                  <button className="btn-secondary" onClick={() => setShowAddSongModal(true)}>
                     Add Songs
                   </button>
                 </div>
@@ -472,11 +438,7 @@ const PlaylistsPage = ({
                         onClick={onPlayPause}
                         disabled={!isActivePlaylist || activeQueue.length === 0}
                       >
-                        {displayPlaying ? (
-                          <i className="ri-pause-fill"></i>
-                        ) : (
-                          <i className="ri-play-fill"></i>
-                        )}
+                        {displayPlaying ? <i className="ri-pause-fill"></i> : <i className="ri-play-fill"></i>}
                       </button>
                       <button
                         type="button"
@@ -496,7 +458,7 @@ const PlaylistsPage = ({
                       </button>
                       <button
                         type="button"
-                        className={`control-btn ${loopCurrentSong ? 'active-loop' : ''}`}
+                        className={`control-btn ${loopCurrentSong ? "active-loop" : ""}`}
                         onClick={onToggleLoop}
                         disabled={!isActivePlaylist || activeQueue.length === 0}
                         title={loopCurrentSong ? "Loop: On" : "Loop: Off"}
@@ -521,13 +483,14 @@ const PlaylistsPage = ({
                 onReorder={handleReorder}
                 onSongDragStart={handleSongDragStart}
                 onSongDragEnd={handleSongDragEnd}
+                editable
               />
             </>
           ) : (
             <div className="no-playlist-selected">
               <div className="music-icon-large">🎵</div>
               <h3>No Playlist Selected</h3>
-              <p>Select a playlist from the left to view its queue.</p>
+              <p>Select a personal playlist to manage its queue.</p>
             </div>
           )}
         </div>
@@ -620,11 +583,7 @@ const PlaylistsPage = ({
                   />
                 </label>
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={closeAddSongModal}
-                  >
+                  <button type="button" className="btn-secondary" onClick={closeAddSongModal}>
                     Cancel
                   </button>
                   <button type="submit" className="btn-primary" disabled={uploadingSong}>

@@ -699,3 +699,148 @@
     font-size: 0.9rem;
   }
 }
+
+.playlist-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.playlist-tabs button {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-weight: 700;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.playlist-tabs button.active {
+  background: var(--primary-gradient);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.featured-search-bar,
+.social-search-row,
+.rename-row {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.featured-search-bar input,
+.social-search-row input,
+.rename-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: rgba(8, 12, 26, 0.6);
+  color: var(--text-primary);
+  padding: 0.65rem 0.9rem;
+}
+
+.rename-row {
+  margin-bottom: var(--space-md);
+}
+
+.social-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.social-panel h3,
+.social-panel h4 {
+  margin: 0;
+}
+
+.social-panel p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.social-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.social-card {
+  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-lg);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.social-card p,
+.social-card small {
+  margin: 0;
+}
+
+.social-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.friends-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.friend-pill {
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.04);
+  display: inline-flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+  width: fit-content;
+}
+
+.playlist-meta-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.featured-chip {
+  border: 1px solid rgba(245, 87, 108, 0.45);
+  color: #ff9fbb;
+  border-radius: var(--radius-full);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.compact-btn {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.feature-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.feature-checkbox input {
+  width: 18px;
+  height: 18px;
+}

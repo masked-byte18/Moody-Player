@@ -24,18 +24,29 @@ router.post("/songs", upload.single("audio"), async (req, res) => {
       return res.status(400).json({ message: "No audio file uploaded" });
     }
 
-    console.log(req.body);
-    console.log(req.file);
+    const { title, artist, mood } = req.body;
+
+    // Check for duplicate song title
+    const existingTitle = await songModel.findOne({ title });
+    if (existingTitle) {
+      return res.status(409).json({ message: "Song with this title already exists" });
+    }
 
     // ☁️ Upload to storage
     const fileData = await uploadFile(req.file);
 
+    // Check for duplicate audio file
+    const existingAudio = await songModel.findOne({ audio: fileData.url });
+    if (existingAudio) {
+      return res.status(409).json({ message: "Song with this audio file already exists" });
+    }
+
     // 💾 Save in DB
     const song = await songModel.create({
-      title: req.body.title,
-      artist: req.body.artist,
+      title,
+      artist,
       audio: fileData.url,
-      mood: req.body.mood,
+      mood,
     });
 
     res.status(201).json({
