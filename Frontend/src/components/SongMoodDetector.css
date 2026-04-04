@@ -18,9 +18,9 @@
   padding: var(--space-md);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
-  background: rgba(102, 126, 234, 0.08);
+  background: var(--surface-2);
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   transition: all var(--transition-base);
 }
@@ -32,8 +32,8 @@
 .song-metadata input:focus {
   outline: none;
   border-color: var(--border-active);
-  background: rgba(102, 126, 234, 0.12);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  background: var(--surface-3);
+  box-shadow: var(--focus-ring);
 }
 
 .song-metadata input:disabled {
@@ -76,14 +76,14 @@
 }
 
 .upload-label span {
-  font-size: 1.15rem;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.3px;
 }
 
 .upload-label small {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin-top: -0.5rem;
   font-weight: 500;

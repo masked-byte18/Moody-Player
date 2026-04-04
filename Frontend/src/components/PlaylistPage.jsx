@@ -1,12 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import QueueList from "./QueueList";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
+import { getDummyPlaylistById } from "../data/discoverDummyData";
 import "./PlaylistPage.css";
 import "./PlaylistsPage.css";
 
 const API = "http://localhost:3000";
+
+const normalizeMood = (mood) => (mood || "unknown").toLowerCase();
+
+const createRandomOrder = (songs) => {
+  const nextSongs = [...songs];
+  for (let index = nextSongs.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [nextSongs[index], nextSongs[swapIndex]] = [nextSongs[swapIndex], nextSongs[index]];
+  }
+  return nextSongs;
+};
+
+const createMagicShuffle = (songs) => {
+  const buckets = songs.reduce((accumulator, song) => {
+    const mood = normalizeMood(song.mood);
+    if (!accumulator[mood]) accumulator[mood] = [];
+    accumulator[mood].push(song);
+    return accumulator;
+  }, {});
+
+  const moodPriority = Object.keys(buckets).sort((left, right) => buckets[right].length - buckets[left].length);
+  const orderedBuckets = moodPriority.map((mood) => createRandomOrder(buckets[mood]));
+  const shuffled = [];
+
+  while (orderedBuckets.some((bucket) => bucket.length > 0)) {
+    orderedBuckets.forEach((bucket) => {
+      if (bucket.length > 0) {
+        shuffled.push(bucket.shift());
+      }
+    });
+  }
+
+  return shuffled;
+};
 
 const PlaylistPage = ({
   activePlaylistId,
@@ -16,16 +50,12 @@ const PlaylistPage = ({
   currentIndex,
   onPlayPlaylist,
   onPlayPause,
-  onNext,
-  onPrevious,
-  onStop,
   onUpdateActivePlaylist,
-  loopCurrentSong = false,
-  onToggleLoop,
   activeUser,
   authToken,
 }) => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const [playlist, setPlaylist] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +71,9 @@ const PlaylistPage = ({
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [selectedTargetPlaylistId, setSelectedTargetPlaylistId] = useState("");
   const [copyingSong, setCopyingSong] = useState(false);
+  const [openSongMenu, setOpenSongMenu] = useState(null);
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const authConfig = authToken
     ? {
@@ -53,17 +86,31 @@ const PlaylistPage = ({
   const loadPlaylist = useCallback(async () => {
     setLoading(true);
     try {
+      const dummyFromState = location.state?.playlistData;
+      if (dummyFromState?._id === id) {
+        setPlaylist(dummyFromState);
+        setLocalSongs(dummyFromState?.songs || []);
+        setLoading(false);
+        return;
+      }
+
       const response = await axios.get(`${API}/playlists/${id}`);
       setPlaylist(response.data.playlist);
       setLocalSongs(response.data.playlist?.songs || []);
     } catch (error) {
       console.error("Failed to load playlist:", error);
-      setPlaylist(null);
-      setLocalSongs([]);
+      const dummyPlaylist = getDummyPlaylistById(id);
+      if (dummyPlaylist) {
+        setPlaylist(dummyPlaylist);
+        setLocalSongs(dummyPlaylist.songs || []);
+      } else {
+        setPlaylist(null);
+        setLocalSongs([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, location.state]);
 
   const loadUserPlaylists = useCallback(async () => {
     if (!activeUser || activeUser === "guest") {
@@ -90,6 +137,22 @@ const PlaylistPage = ({
     loadUserPlaylists();
   }, [loadUserPlaylists]);
 
+  useEffect(() => {
+    const handleWindowClick = () => setOpenSongMenu(null);
+    window.addEventListener("click", handleWindowClick);
+    return () => window.removeEventListener("click", handleWindowClick);
+  }, []);
+
+  useEffect(() => {
+    const handleViewportChange = () => setOpenSongMenu(null);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, []);
+
   const displayedSongs = useMemo(() => {
     if (!playlist) return [];
     if (activePlaylistId === playlist._id && queueSource?.type === "playlist" && queueSource?.playlistId === playlist._id) {
@@ -98,11 +161,23 @@ const PlaylistPage = ({
     return localSongs;
   }, [activePlaylistId, localSongs, playlist, queue, queueSource]);
 
-  const handlePlayCurrentPlaylist = (index = 0) => {
-    if (playlist) {
-      const playablePlaylist = { ...playlist, songs: localSongs };
-      onPlayPlaylist(playablePlaylist, index);
-    }
+  const moodSummary = useMemo(() => {
+    const counts = localSongs.reduce((accumulator, song) => {
+      const mood = normalizeMood(song.mood);
+      accumulator[mood] = (accumulator[mood] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    return Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .map(([mood, total]) => ({ mood, total }));
+  }, [localSongs]);
+
+  const resetAddSongForm = () => {
+    setSongTitle("");
+    setSongArtist("");
+    setSongFile(null);
+    setMoodOverride("auto");
   };
 
   const syncPlaylistSongs = (songs, nextIndex = currentIndex) => {
@@ -116,11 +191,119 @@ const PlaylistPage = ({
     }
   };
 
-  const handleRemoveFromPlaylist = async ({ queue: nextQueue, currentIndex: nextIndex }) => {
-    syncPlaylistSongs(nextQueue, nextIndex);
+  const playSongs = (songs, startIndex = 0) => {
+    if (!playlist || !songs.length) return;
+    const playablePlaylist = {
+      ...playlist,
+      songs,
+    };
+    onPlayPlaylist(playablePlaylist, startIndex);
   };
 
-  const handleDeleteSong = async ({ songId }) => {
+  const handlePlayCurrentPlaylist = (index = 0) => {
+    playSongs(localSongs, index);
+  };
+
+  const handlePrimaryPlayAction = () => {
+    if (!localSongs.length) return;
+    if (isActivePlaylist) {
+      onPlayPause();
+      return;
+    }
+    handlePlayCurrentPlaylist(0);
+  };
+
+  const handleShufflePlay = () => {
+    if (!localSongs.length) return;
+    playSongs(createRandomOrder(localSongs), 0);
+  };
+
+  const handleMagicShuffle = () => {
+    if (!localSongs.length) return;
+    playSongs(createMagicShuffle(localSongs), 0);
+  };
+
+  const handleTemporaryRemove = (index) => {
+    const nextSongs = localSongs.filter((_, songIndex) => songIndex !== index);
+    let nextIndex = currentIndex;
+
+    if (!nextSongs.length) {
+      nextIndex = 0;
+    } else if (index === currentIndex) {
+      nextIndex = index >= nextSongs.length ? 0 : index;
+    } else if (index < currentIndex) {
+      nextIndex = Math.max(currentIndex - 1, 0);
+    }
+
+    syncPlaylistSongs(nextSongs, nextIndex);
+  };
+
+  const handleReorder = async (nextSongs, nextIndex) => {
+    if (!playlist) return;
+
+    syncPlaylistSongs(nextSongs, nextIndex);
+
+    if (!authConfig) return;
+
+    try {
+      await axios.put(
+        `${API}/playlists/${playlist._id}/songs/reorder`,
+        {
+          songIds: nextSongs.map((song) => song?._id).filter(Boolean),
+        },
+        authConfig
+      );
+    } catch (error) {
+      console.error("Reorder error:", error);
+      await loadPlaylist();
+    }
+  };
+
+  const handleSongDragStart = (index, event) => {
+    setDraggedIndex(index);
+    setDragOverIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleSongDragOver = (index, event) => {
+    event.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleSongDrop = async (index, event) => {
+    event.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const nextSongs = [...localSongs];
+    const [movedSong] = nextSongs.splice(draggedIndex, 1);
+    nextSongs.splice(index, 0, movedSong);
+
+    let nextIndex = currentIndex;
+    if (draggedIndex === currentIndex) {
+      nextIndex = index;
+    } else if (draggedIndex < currentIndex && index >= currentIndex) {
+      nextIndex = currentIndex - 1;
+    } else if (draggedIndex > currentIndex && index <= currentIndex) {
+      nextIndex = currentIndex + 1;
+    }
+
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    await handleReorder(nextSongs, nextIndex);
+  };
+
+  const handleSongDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDeleteSong = async (songId) => {
     if (!playlist || !songId) return;
     if (!authConfig) {
       alert("Please log in again to delete songs.");
@@ -137,27 +320,6 @@ const PlaylistPage = ({
       console.error("Delete song error:", error);
       alert(error?.response?.data?.message || "Failed to delete song");
     }
-  };
-
-  const handleReorder = async (nextQueue, nextIndex) => {
-    if (!playlist || !authConfig) return;
-
-    const songIds = nextQueue.map((song) => song?._id).filter(Boolean);
-    syncPlaylistSongs(nextQueue, nextIndex);
-
-    try {
-      await axios.put(`${API}/playlists/${playlist._id}/songs/reorder`, { songIds }, authConfig);
-    } catch (error) {
-      console.error("Reorder error:", error);
-      await loadPlaylist();
-    }
-  };
-
-  const resetAddSongForm = () => {
-    setSongTitle("");
-    setSongArtist("");
-    setSongFile(null);
-    setMoodOverride("auto");
   };
 
   const handleAddSong = async (event) => {
@@ -211,6 +373,28 @@ const PlaylistPage = ({
     setShowCopyModal(true);
   };
 
+  const toggleSongMenu = (event, songId) => {
+    event.stopPropagation();
+    const buttonRect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 228;
+    const menuHeight = 210;
+    const nextTop = Math.max(16, buttonRect.top - menuHeight - 10);
+    const nextLeft = Math.min(
+      window.innerWidth - menuWidth - 16,
+      Math.max(16, buttonRect.right - menuWidth)
+    );
+
+    setOpenSongMenu((current) =>
+      current?.songId === songId
+        ? null
+        : {
+            songId,
+            top: nextTop,
+            left: nextLeft,
+          }
+    );
+  };
+
   const handleCopyToPlaylist = async () => {
     if (!copyTargetSong?._id || !selectedTargetPlaylistId) return;
     if (!authConfig) {
@@ -243,56 +427,6 @@ const PlaylistPage = ({
     }
   };
 
-  const handleMenuDelete = ({ song }) => {
-    handleDeleteSong({ songId: song?._id });
-  };
-
-  const handleMenuRemove = ({ queue: nextQueue, currentIndex: nextIndex, song }) => {
-    handleRemoveFromPlaylist({ queue: nextQueue, currentIndex: nextIndex, song });
-  };
-
-  const songMenuActions = [
-    {
-      id: "copy",
-      label: "Upload To Another Playlist",
-      meta: () => "Copy this song into one of your playlists",
-      onSelect: ({ song }) => openCopyModal(song),
-    },
-    {
-      id: "mood",
-      label: "Song Mood",
-      meta: (song) => (song?.mood || "unknown").toUpperCase(),
-      onSelect: ({ song }) => alert(`Mood: ${(song?.mood || "unknown").toUpperCase()}`),
-    },
-    {
-      id: "remove",
-      label: "Temporary Remove",
-      variant: "warning",
-      meta: () => "Hide it from this page until refresh",
-      onSelect: ({ index }) => {
-        const nextQueue = localSongs.filter((_, songIndex) => songIndex !== index);
-        let nextIndex = currentIndex;
-
-        if (!nextQueue.length) {
-          nextIndex = 0;
-        } else if (index === currentIndex) {
-          nextIndex = index >= nextQueue.length ? 0 : index;
-        } else if (index < currentIndex) {
-          nextIndex = Math.max(currentIndex - 1, 0);
-        }
-
-        handleMenuRemove({ queue: nextQueue, currentIndex: nextIndex, song: localSongs[index] });
-      },
-    },
-    {
-      id: "delete",
-      label: "Delete Song",
-      variant: "danger",
-      meta: () => "Remove it from this playlist and database if unused",
-      onSelect: ({ song }) => handleMenuDelete({ song }),
-    },
-  ];
-
   if (loading) {
     return (
       <div className="page-shell">
@@ -319,129 +453,209 @@ const PlaylistPage = ({
     );
   }
 
-  const isActivePlaylist =
-    queueSource?.type === "playlist" && queueSource?.playlistId === playlist._id;
-  const displayIndex = isActivePlaylist ? currentIndex : -1;
-  const displayPlaying = isActivePlaylist ? isPlaying : false;
-  const activeQueue = isActivePlaylist ? queue : [];
-  const currentSong = isActivePlaylist && activeQueue.length > 0 ? activeQueue[currentIndex] : null;
+  const isActivePlaylist = queueSource?.type === "playlist" && queueSource?.playlistId === playlist._id;
+  const activeSong = isActivePlaylist && displayedSongs.length > 0 ? displayedSongs[currentIndex] : null;
   const copyTargets = userPlaylists.filter((item) => item._id !== playlist._id);
+  const playlistOwnerUsername = location.state?.ownerUsername || playlist.ownerUsername;
+  const shouldShowOwnerLink =
+    Boolean(playlistOwnerUsername) &&
+    playlistOwnerUsername !== activeUser &&
+    location.state?.source === "discover";
 
   return (
     <div className="page-shell">
       <div className="playlist-page-shell">
-        <div className="playlist-page-header">
-          <div>
-            <Link to="/playlists" className="playlist-back-crumb">
-              <i className="ri-arrow-left-line"></i>
-              Back to playlists
-            </Link>
-            <h2>{playlist.name}</h2>
-            <p>{playlist.description || "No description"} . @{playlist.ownerUsername}</p>
-          </div>
-          <div className="playlist-page-actions">
-            <button className="btn-primary" onClick={() => handlePlayCurrentPlaylist(0)}>
-              Play Playlist
-            </button>
-            <button className="btn-secondary" onClick={() => setShowAddModal(true)}>
-              Add Song
-            </button>
-          </div>
-        </div>
-
-        <div className="playlist-hero-card">
-          <div className="playlist-cover-art">
-            {playlist.coverImage ? (
-              <img src={playlist.coverImage} alt={playlist.name} />
-            ) : (
-              <div className="cover-placeholder">No Cover</div>
-            )}
-          </div>
-          <div className="playlist-hero-copy">
-            <span className="playlist-kicker">Playlist Detail</span>
-            <h3>{playlist.name}</h3>
-            <p>{playlist.description || "This playlist has no description yet."}</p>
-            <div className="playlist-hero-meta">
-              <span>{localSongs.length} song(s)</span>
-              <span>Owner: @{playlist.ownerUsername}</span>
+        <div className="playlist-sticky-bar">
+          <div className="playlist-sticky-copy">
+            <div className="playlist-sticky-thumb">
+              {playlist.coverImage ? (
+                <img src={playlist.coverImage} alt={playlist.name} />
+              ) : (
+                <div className="playlist-sticky-thumb-placeholder">No</div>
+              )}
+            </div>
+            <div className="playlist-sticky-text">
+              <span className="playlist-sticky-label">Playlist</span>
+              <strong>{playlist.name}</strong>
             </div>
           </div>
+          <div className="playlist-sticky-actions">
+            <button
+              type="button"
+              className="playlist-icon-button playlist-icon-button-primary"
+              onClick={handlePrimaryPlayAction}
+              disabled={!localSongs.length}
+              title="Play playlist"
+            >
+              <i className={isActivePlaylist && isPlaying ? "ri-pause-fill" : "ri-play-fill"}></i>
+            </button>
+            <button
+              type="button"
+              className="playlist-icon-button"
+              onClick={handleShufflePlay}
+              disabled={!localSongs.length}
+              title="Shuffle play"
+            >
+              <i className="ri-shuffle-line"></i>
+            </button>
+          </div>
         </div>
 
-        <div className="currently-playing-section">
-          <h3>Currently Playing</h3>
-          {currentSong ? (
-            <>
-              <div className="now-playing-card">
-                <div className="album-art">
-                  <div className="music-icon">♪</div>
-                </div>
-                <div className="track-info">
-                  <h4>{currentSong.title}</h4>
-                  <p>{currentSong.artist}</p>
-                  <span className="mood-badge">{currentSong.mood || "unknown"}</span>
-                </div>
+        <section className="playlist-profile-card">
+          <div className="playlist-profile-content">
+            <div className="playlist-mood-strip playlist-mood-strip-only">
+              <div className="playlist-mood-chips">
+                {moodSummary.length ? (
+                  moodSummary.map(({ mood, total }) => (
+                    <span key={mood} className={`playlist-mood-chip mood-${mood}`}>
+                      {mood}
+                      <strong>{total}</strong>
+                    </span>
+                  ))
+                ) : (
+                  <span className="playlist-mood-chip mood-unknown">No moods yet</span>
+                )}
               </div>
-              <div className="playback-controls">
-                <button
-                  type="button"
-                  className="control-btn"
-                  onClick={onPrevious}
-                  disabled={!isActivePlaylist || activeQueue.length === 0}
-                >
-                  <i className="ri-skip-back-fill"></i>
-                </button>
-                <button
-                  type="button"
-                  className="control-btn play-btn"
-                  onClick={onPlayPause}
-                  disabled={!isActivePlaylist || activeQueue.length === 0}
-                >
-                  {displayPlaying ? <i className="ri-pause-fill"></i> : <i className="ri-play-fill"></i>}
-                </button>
-                <button
-                  type="button"
-                  className="control-btn"
-                  onClick={onNext}
-                  disabled={!isActivePlaylist || activeQueue.length === 0}
-                >
-                  <i className="ri-skip-forward-fill"></i>
-                </button>
-                <button
-                  type="button"
-                  className="control-btn stop-btn"
-                  onClick={onStop}
-                  disabled={!isActivePlaylist || activeQueue.length === 0}
-                >
-                  <i className="ri-stop-fill"></i>
-                </button>
-                <button
-                  type="button"
-                  className={`control-btn ${loopCurrentSong ? "active-loop" : ""}`}
-                  onClick={onToggleLoop}
-                  disabled={!isActivePlaylist || activeQueue.length === 0}
-                  title={loopCurrentSong ? "Loop: On" : "Loop: Off"}
-                >
-                  <i className="ri-repeat-one-line"></i>
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="empty-state">Play this playlist to start listening.</p>
-          )}
-        </div>
+            </div>
+          </div>
+        </section>
 
-        <QueueList
-          title="Playlist Queue"
-          songs={displayedSongs}
-          currentIndex={displayIndex}
-          isPlaying={displayPlaying}
-          onPlayFromQueue={handlePlayCurrentPlaylist}
-          onRemove={handleRemoveFromPlaylist}
-          onDelete={handleDeleteSong}
-          onReorder={handleReorder}
-          songMenuActions={songMenuActions}
-        />
+        <button type="button" className="playlist-add-row" onClick={() => setShowAddModal(true)}>
+          <span className="playlist-add-icon">
+            <i className="ri-add-line"></i>
+          </span>
+          <span className="playlist-add-copy">
+            <strong>Add to this playlist</strong>
+            <span>Upload a fresh song into {playlist.name}</span>
+          </span>
+        </button>
+
+        <section className="playlist-song-panel">
+          <div className="playlist-song-panel-header">
+            <div className="playlist-song-panel-title-row">
+              <div className="playlist-song-panel-title-group">
+                <div className="playlist-song-panel-title">
+                <h2>All Songs</h2>
+                  <span className="playlist-song-count-chip">{localSongs.length} song(s)</span>
+                </div>
+                {shouldShowOwnerLink ? (
+                  <button
+                    type="button"
+                    className="playlist-owner-link-button"
+                    onClick={() => navigate(`/discover/users/${playlistOwnerUsername}`)}
+                  >
+                    @{playlistOwnerUsername}
+                  </button>
+                ) : null}
+              </div>
+              <div className="playlist-song-panel-subcopy">
+                <p>{activeSong ? `Now Playing: ${activeSong.title}` : "Now Playing: Nothing yet"}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="playlist-song-list">
+            {displayedSongs.length ? (
+              displayedSongs.map((song, index) => {
+                const isCurrentSong = isActivePlaylist && index === currentIndex;
+                return (
+                  <article
+                    key={song._id || `${song.title}-${index}`}
+                    className={`playlist-song-row ${isCurrentSong ? "is-active" : ""} ${
+                      draggedIndex === index ? "is-dragging" : ""
+                    } ${dragOverIndex === index && draggedIndex !== index ? "is-drop-target" : ""}`}
+                    draggable
+                    onDragStart={(event) => handleSongDragStart(index, event)}
+                    onDragOver={(event) => handleSongDragOver(index, event)}
+                    onDrop={(event) => handleSongDrop(index, event)}
+                    onDragEnd={handleSongDragEnd}
+                  >
+                    <button
+                      type="button"
+                      className="playlist-song-main"
+                      onClick={() => handlePlayCurrentPlaylist(index)}
+                    >
+                      <span className="playlist-song-index">
+                        {isCurrentSong && isPlaying ? <i className="ri-volume-up-fill"></i> : index + 1}
+                      </span>
+
+                      <div className="playlist-song-copy">
+                        <strong>{song.title}</strong>
+                        <span>{song.artist || "Unknown"}</span>
+                      </div>
+                    </button>
+
+                    <div className="playlist-song-side">
+                      <span className={`playlist-song-mood mood-${normalizeMood(song.mood)}`}>
+                        {(song.mood || "unknown").toUpperCase()}
+                      </span>
+
+                      <div className="playlist-song-menu-wrap" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="playlist-song-menu-button"
+                          onClick={(event) => toggleSongMenu(event, song._id)}
+                          title="Song options"
+                        >
+                          <i className="ri-more-2-fill"></i>
+                        </button>
+
+                        {openSongMenu?.songId === song._id ? (
+                          <div
+                            className="playlist-song-menu playlist-song-menu-floating"
+                            style={{
+                              top: `${openSongMenu.top}px`,
+                              left: `${openSongMenu.left}px`,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="playlist-song-menu-item"
+                              onClick={() => {
+                                setOpenSongMenu(null);
+                                openCopyModal(song);
+                              }}
+                            >
+                              <i className="ri-upload-2-line"></i>
+                              Upload to playlist
+                            </button>
+                            <button
+                              type="button"
+                              className="playlist-song-menu-item"
+                              onClick={() => {
+                                setOpenSongMenu(null);
+                                handleTemporaryRemove(index);
+                              }}
+                            >
+                              <i className="ri-close-circle-line"></i>
+                              Temporary remove
+                            </button>
+                            <button
+                              type="button"
+                              className="playlist-song-menu-item danger"
+                              onClick={() => {
+                                setOpenSongMenu(null);
+                                handleDeleteSong(song._id);
+                              }}
+                            >
+                              <i className="ri-delete-bin-6-line"></i>
+                              Delete song
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="playlist-empty-songs">
+                <i className="ri-music-2-line"></i>
+                <p>No songs in this playlist yet.</p>
+              </div>
+            )}
+          </div>
+        </section>
 
         {showAddModal ? (
           <div className="modal-overlay" onClick={() => setShowAddModal(false)}>

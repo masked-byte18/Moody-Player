@@ -1,39 +1,49 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import "./Sidebar.css";
 
 const API = "http://localhost:3000";
 
 const profileColor = (seed = "U") => {
-  const palette = ["#4f46e5", "#db2777", "#0ea5e9", "#16a34a", "#ca8a04", "#7c3aed"];
+  const palette = ["#d9dde5", "#bfc6d2", "#f0f2f6", "#9ea7b5", "#cfd5de", "#7f8794"];
   const index = seed.charCodeAt(0) % palette.length;
   return palette[index];
 };
 
 function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobile }) {
+  const location = useLocation();
   const [openProfile, setOpenProfile] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(user.username || "guest");
   const [displayDraft, setDisplayDraft] = useState(user.displayName || "Guest");
   const [photoFile, setPhotoFile] = useState(null);
   const [friends, setFriends] = useState([]);
+  const [socialStats, setSocialStats] = useState({ followersCount: 0, followingCount: 0 });
 
   const initialLetter = useMemo(
     () => (user.displayName?.trim()?.charAt(0) || user.username?.charAt(0) || "U").toUpperCase(),
     [user.displayName, user.username]
   );
   const isLoggedIn = Boolean(user.username && user.username !== "guest");
+  const authToken = localStorage.getItem("moody-auth-token") || "";
 
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async () => {
+    if (!isLoggedIn || !authToken) {
+      setFriends([]);
+      return;
+    }
+
     try {
       const response = await axios.get(`${API}/social/friends`, {
-        params: { username: user.username },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       });
       setFriends(response.data.friends || []);
     } catch {
       setFriends([]);
     }
-  };
+  }, [authToken, isLoggedIn]);
 
   const openProfileModal = async () => {
     setUsernameDraft(user.username || "guest");
@@ -44,6 +54,38 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
       await loadFriends();
     }
   };
+
+  const loadSocialStats = useCallback(async () => {
+    if (!isLoggedIn || !authToken) {
+      setSocialStats({ followersCount: 0, followingCount: 0 });
+      return;
+    }
+
+    try {
+      const response = await axios.get(`${API}/social/stats/${user.username}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      setSocialStats({
+        followersCount: response.data.followersCount || 0,
+        followingCount: response.data.followingCount || 0,
+      });
+    } catch {
+      setSocialStats({ followersCount: 0, followingCount: friends.length || 0 });
+    }
+  }, [authToken, friends.length, isLoggedIn, user.username]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !authToken) {
+      setFriends([]);
+      setSocialStats({ followersCount: 0, followingCount: 0 });
+      return;
+    }
+
+    loadFriends();
+    loadSocialStats();
+  }, [authToken, isLoggedIn, loadFriends, loadSocialStats, user.username, location.pathname]);
 
   const handleCloseMobile = () => {
     if (typeof onCloseMobile === "function") {
@@ -75,10 +117,17 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
 
   const handleUnfollow = async (targetUsername) => {
     try {
-      await axios.post(`${API}/social/unfollow/${targetUsername}`, {
-        username: user.username,
-      });
+      await axios.post(
+        `${API}/social/unfollow/${targetUsername}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
       await loadFriends();
+      await loadSocialStats();
     } catch {
       alert("Failed to unfollow user");
     }
@@ -133,29 +182,44 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         </NavLink>
       </nav>
 
-      <div className="auth-links">
-        {!isLoggedIn && (
-          <>
-            <NavLink to="/login" className="ghost-btn" onClick={handleCloseMobile}>
-              Log In
-            </NavLink>
-            <NavLink to="/signup" className="fill-btn" onClick={handleCloseMobile}>
-              Sign Up
-            </NavLink>
-          </>
-        )}
-        {isLoggedIn && (
-          <button
-            type="button"
-            className="logout-btn"
-            onClick={() => {
-              handleCloseMobile();
-              onLogout();
-            }}
-          >
-            Log Out
-          </button>
-        )}
+      <div className="sidebar-bottom">
+        {isLoggedIn ? (
+          <div className="sidebar-social-summary">
+            <div className="sidebar-social-row">
+              <span>Followers</span>
+              <strong>{socialStats.followersCount}</strong>
+            </div>
+            <div className="sidebar-social-row">
+              <span>Following</span>
+              <strong>{socialStats.followingCount}</strong>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="auth-links">
+          {!isLoggedIn && (
+            <>
+              <NavLink to="/login" className="ghost-btn" onClick={handleCloseMobile}>
+                Log In
+              </NavLink>
+              <NavLink to="/signup" className="fill-btn" onClick={handleCloseMobile}>
+                Sign Up
+              </NavLink>
+            </>
+          )}
+          {isLoggedIn && (
+            <button
+              type="button"
+              className="logout-btn"
+              onClick={() => {
+                handleCloseMobile();
+                onLogout();
+              }}
+            >
+              Log Out
+            </button>
+          )}
+        </div>
       </div>
 
       {openProfile && (

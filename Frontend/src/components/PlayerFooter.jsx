@@ -53,7 +53,6 @@ const PlayerFooter = ({
       <div className="player-track-info">
         <span className="player-title">{currentSong.title}</span>
         <span className="player-artist">{currentSong.artist}</span>
-        <span className="player-mood">{currentSong.mood}</span>
       </div>
 
       <div className="player-controls">

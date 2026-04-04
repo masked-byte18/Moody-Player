@@ -8,10 +8,10 @@
   justify-content: space-between;
   gap: var(--space-lg);
   padding: var(--space-md) var(--space-xl);
-  background: rgba(10, 14, 26, 0.98);
+  background: rgba(18, 20, 24, 0.98);
   border-top: 1px solid var(--border-default);
   backdrop-filter: blur(20px);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 -10px 32px rgba(0, 0, 0, 0.34);
   z-index: 1000;
   animation: slideUp 0.4s ease;
 }
@@ -32,14 +32,16 @@
 .player-track-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  justify-content: center;
+  gap: 0.22rem;
   min-width: 240px;
   flex: 1;
 }
 
 .player-title {
-  font-weight: 700;
-  font-size: 1.05rem;
+  font-weight: 800;
+  font-size: 1rem;
+  line-height: 1.1;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -48,18 +50,11 @@
 
 .player-artist {
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.player-mood {
-  color: var(--accent);
-  font-size: 0.8rem;
-  text-transform: capitalize;
-  font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
 .player-controls {
@@ -84,7 +79,7 @@
 }
 
 .player-controls .control-btn:hover:not(:disabled) {
-  background: rgba(102, 126, 234, 0.25);
+  background: var(--surface-2);
   border-color: var(--border-hover);
   transform: scale(1.05);
 }
@@ -110,20 +105,20 @@
 }
 
 .player-controls .stop-btn {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: rgba(255, 107, 107, 0.5);
-  color: #ff8787;
+  background: rgba(255, 127, 127, 0.12);
+  border-color: rgba(255, 127, 127, 0.24);
+  color: var(--danger);
 }
 
 .player-controls .stop-btn:hover:not(:disabled) {
-  background: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 127, 127, 0.2);
   border-color: var(--danger);
 }
 
 .player-controls .control-btn.active-loop {
   background: var(--primary-gradient);
   border-color: transparent;
-  color: var(--text-primary);
+  color: #111214;
   box-shadow: var(--shadow-glow);
 }
 
@@ -144,15 +139,11 @@
   }
 
   .player-title {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
   }
 
   .player-artist {
-    font-size: 0.85rem;
-  }
-
-  .player-mood {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 
   .player-controls {
@@ -185,15 +176,11 @@
   }
 
   .player-title {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
 
   .player-artist {
-    font-size: 0.75rem;
-  }
-
-  .player-mood {
-    display: none;
+    font-size: 0.72rem;
   }
 
   .player-controls {

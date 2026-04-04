@@ -5,6 +5,7 @@ import MoodPage from "./components/MoodPage";
 import PlaylistPage from "./components/PlaylistPage";
 import PlaylistsPage from "./components/PlaylistsPage";
 import FeaturedHubPage from "./components/FeaturedHubPage";
+import DiscoverProfilePage from "./components/DiscoverProfilePage";
 import PlayerFooter from "./components/PlayerFooter";
 import Sidebar from "./components/Sidebar";
 import ThemeSwitcher from "./components/ThemeSwitcher";
@@ -203,8 +204,7 @@ function App() {
             <span></span>
           </button>
           <div>
-            <h1>Moody Player</h1>
-            <p>Emotion-aware music with social discovery</p>
+            <h1>Moody</h1>
           </div>
           <ThemeSwitcher theme={theme} onToggleTheme={handleThemeToggle} />
         </header>
@@ -282,20 +282,17 @@ function App() {
           path="/discover"
           element={
             <FeaturedHubPage
-              queue={queue}
-              queueSource={queueSource}
-              isPlaying={isPlaying}
-              currentIndex={currentIndex}
-              onPlayPlaylist={handlePlayPlaylist}
-              onPlayPause={handlePlayPause}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onStop={handleStop}
-              loopCurrentSong={loopCurrentSong}
-              onToggleLoop={handleToggleLoop}
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
-              authToken={userState.token}
+            />
+          }
+        />
+        <Route
+          path="/discover/users/:username"
+          element={
+            <DiscoverProfilePage
+              activeUser={userState.username}
+              activeDisplayName={userState.displayName}
             />
           }
         />

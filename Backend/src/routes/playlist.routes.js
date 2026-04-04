@@ -606,6 +606,28 @@ router.get("/social/friends", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/social/stats/:username", requireAuth, async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username || "");
+    if (!username) {
+      return res.status(400).json({ message: "username is required" });
+    }
+
+    const profile = await ensureUserProfile(username, username);
+    const followingCount = (profile.following || []).length;
+    const followersCount = await userProfileModel.countDocuments({ following: username });
+
+    return res.status(200).json({
+      username,
+      followersCount,
+      followingCount,
+    });
+  } catch (error) {
+    console.error("Social stats error:", error);
+    return res.status(500).json({ message: "Failed to fetch social stats" });
+  }
+});
+
 router.post("/social/follow/:targetUsername", requireAuth, async (req, res) => {
   try {
     const username = req.user.username;

@@ -12,9 +12,9 @@
   border-radius: var(--radius-lg);
   border: none;
   background: var(--primary-gradient);
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  font-weight: 700;
+  color: #111214;
+  font-size: var(--text-md);
+  font-weight: 800;
   cursor: pointer;
   transition: all var(--transition-slow);
   box-shadow: var(--shadow-sm);

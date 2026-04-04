@@ -8,6 +8,8 @@ const API = "http://localhost:3000";
 const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
   const navigate = useNavigate();
   const [playlists, setPlaylists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -23,6 +25,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     : null;
 
   const loadPlaylists = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const response = await axios.get(`${API}/playlists`, {
         params: { username: activeUser, scope: "personal" },
@@ -30,6 +34,10 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       setPlaylists(response.data.playlists || []);
     } catch (error) {
       console.error("Failed to load playlists:", error);
+      setPlaylists([]);
+      setLoadError("We couldn't load your playlists right now.");
+    } finally {
+      setLoading(false);
     }
   }, [activeUser]);
 
@@ -106,6 +114,13 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
         </div>
 
         <div className="playlist-grid playlist-grid-listing">
+          {loading ? <div className="empty-panel">Loading your playlists...</div> : null}
+          {!loading && loadError ? <div className="empty-panel">{loadError}</div> : null}
+          {!loading && !loadError && activeUser === "guest" ? (
+            <div className="empty-panel">
+              Log in to create personal playlists and manage your songs here.
+            </div>
+          ) : null}
           {playlists.map((playlist) => (
             <div
               className="playlist-card"
@@ -146,7 +161,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
               </div>
             </div>
           ))}
-          {playlists.length === 0 ? (
+          {!loading && !loadError && playlists.length === 0 && activeUser !== "guest" ? (
             <div className="empty-panel">No personal playlists yet. Create one to start.</div>
           ) : null}
         </div>
