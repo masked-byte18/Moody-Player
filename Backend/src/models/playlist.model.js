@@ -17,6 +17,7 @@ const playlistSchema = new mongoose.Schema(
     isFeatured: { type: Boolean, default: false, index: true },
     featuredAt: { type: Date, default: null },
     savesCount: { type: Number, default: 0 },
+    contributors: [{ type: String, lowercase: true, trim: true }],
     songs: [{ type: mongoose.Schema.Types.ObjectId, ref: "song" }],
   },
   { timestamps: true }

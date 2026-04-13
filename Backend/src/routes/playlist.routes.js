@@ -4,6 +4,8 @@ const uploadFile = require("../service/storage.service");
 const playlistModel = require("../models/playlist.model");
 const songModel = require("../models/song.model");
 const userProfileModel = require("../models/userProfile.model");
+const collaborationRequestModel = require("../models/collaborationRequest.model");
+const playlistActivityModel = require("../models/playlistActivity.model");
 const { requireAuth } = require("../middleware/auth.middleware");
 const {
   createAudioHash,
@@ -50,6 +52,28 @@ const cleanPlaylist = (playlistDoc) => {
   const obj = playlistDoc.toObject();
   obj.songs = (obj.songs || []).filter((song) => song !== null);
   return obj;
+};
+
+const isPlaylistOwner = (playlist, username) =>
+  (playlist?.ownerUsername || "") === normalizeUsername(username || "");
+
+const isPlaylistContributor = (playlist, username) =>
+  (playlist?.contributors || []).includes(normalizeUsername(username || ""));
+
+const canEditPlaylist = (playlist, username) =>
+  isPlaylistOwner(playlist, username) || isPlaylistContributor(playlist, username);
+
+const logPlaylistActivity = async ({ playlist, actor, type, text }) => {
+  if (!playlist?._id || !actor?.username || !text) return;
+
+  await playlistActivityModel.create({
+    playlist: playlist._id,
+    playlistName: playlist.name || "Playlist",
+    actorUsername: normalizeUsername(actor.username),
+    actorDisplayName: actor.displayName || actor.username,
+    type: type || "update",
+    text,
+  });
 };
 
 const audioUpload = multer({
@@ -104,6 +128,7 @@ router.post("/playlists", requireAuth, imageUpload.single("cover"), async (req, 
       ownerDisplayName: displayName,
       isFeatured: featured,
       featuredAt: featured ? new Date() : null,
+      contributors: [],
       songs: [],
     });
 
@@ -146,6 +171,48 @@ router.get("/playlists", async (req, res) => {
   } catch (error) {
     console.error("Playlist fetch error:", error);
     res.status(500).json({ message: "Failed to fetch playlists" });
+  }
+});
+
+router.get("/playlists/mine", requireAuth, async (req, res) => {
+  try {
+    const playlists = await playlistModel
+      .find({ ownerUsername: req.user.username })
+      .populate("songs")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ playlists: playlists.map(cleanPlaylist) });
+  } catch (error) {
+    console.error("My playlists fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch playlists" });
+  }
+});
+
+router.get("/playlists/collab", requireAuth, async (req, res) => {
+  try {
+    const playlists = await playlistModel
+      .find({ contributors: req.user.username })
+      .populate("songs")
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json({ playlists: playlists.map(cleanPlaylist) });
+  } catch (error) {
+    console.error("Collaborative playlists fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch collaborative playlists" });
+  }
+});
+
+router.get("/playlists/managed", requireAuth, async (req, res) => {
+  try {
+    const playlists = await playlistModel
+      .find({ ownerUsername: req.user.username, "contributors.0": { $exists: true } })
+      .populate("songs")
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json({ playlists: playlists.map(cleanPlaylist) });
+  } catch (error) {
+    console.error("Managed playlists fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch managed playlists" });
   }
 });
 
@@ -209,6 +276,208 @@ router.get("/playlists/:id", async (req, res) => {
   }
 });
 
+router.post("/playlists/:id/collab/request", requireAuth, async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (isPlaylistOwner(playlist, req.user.username)) {
+      return res.status(400).json({ message: "Owner cannot request collaboration" });
+    }
+
+    if (isPlaylistContributor(playlist, req.user.username)) {
+      return res.status(409).json({ message: "You are already a contributor" });
+    }
+
+    const existingPending = await collaborationRequestModel.findOne({
+      playlist: playlist._id,
+      requesterUsername: req.user.username,
+      status: "pending",
+    });
+
+    if (existingPending) {
+      return res.status(409).json({ message: "Request already pending" });
+    }
+
+    const request = await collaborationRequestModel.create({
+      playlist: playlist._id,
+      playlistName: playlist.name,
+      ownerUsername: playlist.ownerUsername,
+      requesterUsername: req.user.username,
+      requesterDisplayName: req.user.displayName || req.user.username,
+      message: String(req.body?.message || "").trim(),
+      status: "pending",
+    });
+
+    return res.status(201).json({ message: "Collaboration request sent", request });
+  } catch (error) {
+    console.error("Create collaboration request error:", error);
+    return res.status(500).json({ message: "Failed to create collaboration request" });
+  }
+});
+
+router.get("/collab/requests/inbox", requireAuth, async (req, res) => {
+  try {
+    const requests = await collaborationRequestModel
+      .find({ ownerUsername: req.user.username })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ requests });
+  } catch (error) {
+    console.error("Collab inbox fetch error:", error);
+    return res.status(500).json({ message: "Failed to fetch collaboration inbox" });
+  }
+});
+
+router.get("/collab/requests/outgoing", requireAuth, async (req, res) => {
+  try {
+    const requests = await collaborationRequestModel
+      .find({ requesterUsername: req.user.username })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ requests });
+  } catch (error) {
+    console.error("Collab outgoing fetch error:", error);
+    return res.status(500).json({ message: "Failed to fetch outgoing collaboration requests" });
+  }
+});
+
+router.post("/collab/requests/:requestId/respond", requireAuth, async (req, res) => {
+  try {
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    if (!["accepted", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "status must be accepted or rejected" });
+    }
+
+    const request = await collaborationRequestModel.findById(req.params.requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (request.ownerUsername !== req.user.username) {
+      return res.status(403).json({ message: "Only playlist owner can respond to request" });
+    }
+
+    request.status = status;
+    request.respondedAt = new Date();
+    await request.save();
+
+    if (status === "accepted") {
+      const playlist = await playlistModel.findById(request.playlist);
+      if (playlist && !playlist.contributors.includes(request.requesterUsername)) {
+        playlist.contributors.push(request.requesterUsername);
+        await playlist.save();
+      }
+    }
+
+    return res.status(200).json({ message: `Request ${status}`, request });
+  } catch (error) {
+    console.error("Collab request respond error:", error);
+    return res.status(500).json({ message: "Failed to respond collaboration request" });
+  }
+});
+
+router.get("/playlists/:id/contributors", requireAuth, async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (!isPlaylistOwner(playlist, req.user.username)) {
+      return res.status(403).json({ message: "Only owner can view contributors" });
+    }
+
+    const contributors = playlist.contributors || [];
+    return res.status(200).json({ contributors });
+  } catch (error) {
+    console.error("Contributors fetch error:", error);
+    return res.status(500).json({ message: "Failed to fetch contributors" });
+  }
+});
+
+router.delete("/playlists/:id/contributors/:username", requireAuth, async (req, res) => {
+  try {
+    const targetUsername = normalizeUsername(req.params.username || "");
+    const playlist = await playlistModel.findById(req.params.id);
+
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (!isPlaylistOwner(playlist, req.user.username)) {
+      return res.status(403).json({ message: "Only owner can remove contributors" });
+    }
+
+    playlist.contributors = (playlist.contributors || []).filter((user) => user !== targetUsername);
+    await playlist.save();
+
+    await collaborationRequestModel.updateMany(
+      { playlist: playlist._id, requesterUsername: targetUsername, status: "accepted" },
+      { $set: { status: "rejected", respondedAt: new Date() } }
+    );
+
+    return res.status(200).json({ message: "Contributor removed" });
+  } catch (error) {
+    console.error("Contributor remove error:", error);
+    return res.status(500).json({ message: "Failed to remove contributor" });
+  }
+});
+
+router.get("/playlists/:id/activity", requireAuth, async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (!canEditPlaylist(playlist, req.user.username)) {
+      return res.status(403).json({ message: "Not allowed to view activity" });
+    }
+
+    const activities = await playlistActivityModel.find({ playlist: playlist._id }).sort({ createdAt: -1 });
+    return res.status(200).json({ activities });
+  } catch (error) {
+    console.error("Playlist activity fetch error:", error);
+    return res.status(500).json({ message: "Failed to fetch playlist activity" });
+  }
+});
+
+router.put("/playlists/:id", requireAuth, imageUpload.single("cover"), async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (!isPlaylistOwner(playlist, req.user.username)) {
+      return res.status(403).json({ message: "Only owner can update playlist details" });
+    }
+
+    const nextName = String(req.body?.name || "").trim();
+    const nextDescription = String(req.body?.description || "").trim();
+
+    if (nextName) {
+      playlist.name = nextName;
+    }
+    playlist.description = nextDescription;
+
+    if (req.file) {
+      const coverData = await uploadFile(req.file, "cohort-playlists");
+      playlist.coverImage = coverData.url;
+    }
+
+    await playlist.save();
+
+    return res.status(200).json({ message: "Playlist updated", playlist });
+  } catch (error) {
+    console.error("Playlist update error:", error);
+    return res.status(500).json({ message: "Failed to update playlist" });
+  }
+});
+
 router.delete("/playlists/:id", requireAuth, async (req, res) => {
   try {
     const playlist = await playlistModel.findById(req.params.id);
@@ -223,6 +492,8 @@ router.delete("/playlists/:id", requireAuth, async (req, res) => {
     const songIds = playlist.songs.map((songId) => songId.toString());
 
     await userProfileModel.updateMany({}, { $pull: { savedFeatured: { playlist: playlist._id } } });
+    await collaborationRequestModel.deleteMany({ playlist: playlist._id });
+    await playlistActivityModel.deleteMany({ playlist: playlist._id });
     await playlistModel.findByIdAndDelete(req.params.id);
 
     await Promise.all(songIds.map((songId) => removeSongIfUnused(songId)));
@@ -268,8 +539,8 @@ router.post(
         return res.status(404).json({ message: "Playlist not found" });
       }
 
-      if (req.user.username !== playlist.ownerUsername) {
-        return res.status(403).json({ message: "You can only update your own playlist" });
+      if (!canEditPlaylist(playlist, req.user.username)) {
+        return res.status(403).json({ message: "You do not have edit access for this playlist" });
       }
 
       if (!req.file) {
@@ -313,6 +584,12 @@ router.post(
 
       playlist.songs.push(song._id);
       await playlist.save();
+      await logPlaylistActivity({
+        playlist,
+        actor: req.user,
+        type: "add_song",
+        text: `added "${song.title}" by ${song.artist || "Unknown"}.`,
+      });
 
       const updatedPlaylist = await playlistModel.findById(playlist._id).populate("songs");
 
@@ -338,12 +615,19 @@ router.delete("/playlists/:id/songs/:songId", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    if (req.user.username !== playlist.ownerUsername) {
-      return res.status(403).json({ message: "You can only update your own playlist" });
+    if (!canEditPlaylist(playlist, req.user.username)) {
+      return res.status(403).json({ message: "You do not have edit access for this playlist" });
     }
 
+    const removedSong = await songModel.findById(songId);
     playlist.songs = playlist.songs.filter((song) => song.toString() !== songId);
     await playlist.save();
+    await logPlaylistActivity({
+      playlist,
+      actor: req.user,
+      type: deleteSong ? "delete_song" : "remove_song",
+      text: `${deleteSong ? "deleted" : "removed"} "${removedSong?.title || "song"}" from the playlist.`,
+    });
 
     if (deleteSong) {
       await removeSongIfUnused(songId);
@@ -365,8 +649,8 @@ router.put("/playlists/:id/songs/reorder", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    if (req.user.username !== playlist.ownerUsername) {
-      return res.status(403).json({ message: "You can only update your own playlist" });
+    if (!canEditPlaylist(playlist, req.user.username)) {
+      return res.status(403).json({ message: "You do not have edit access for this playlist" });
     }
 
     if (!Array.isArray(songIds)) {
@@ -385,6 +669,12 @@ router.put("/playlists/:id/songs/reorder", requireAuth, async (req, res) => {
 
     playlist.songs = normalizedIds;
     await playlist.save();
+    await logPlaylistActivity({
+      playlist,
+      actor: req.user,
+      type: "reorder",
+      text: "reordered the songs in this playlist.",
+    });
 
     const updatedPlaylist = await playlistModel.findById(playlist._id).populate("songs");
 
@@ -409,8 +699,8 @@ router.post("/playlists/:targetId/songs/transfer", requireAuth, async (req, res)
       return res.status(404).json({ message: "Target playlist not found" });
     }
 
-    if (req.user.username !== targetPlaylist.ownerUsername) {
-      return res.status(403).json({ message: "You can only copy songs to your own playlist" });
+    if (!canEditPlaylist(targetPlaylist, req.user.username)) {
+      return res.status(403).json({ message: "You do not have edit access for this playlist" });
     }
 
     const originalSong = await songModel.findById(songId);
@@ -432,6 +722,12 @@ router.post("/playlists/:targetId/songs/transfer", requireAuth, async (req, res)
 
     targetPlaylist.songs.push(originalSong._id);
     await targetPlaylist.save();
+    await logPlaylistActivity({
+      playlist: targetPlaylist,
+      actor: req.user,
+      type: "add_song",
+      text: `copied "${originalSong.title}" into this playlist.`,
+    });
 
     const updatedTargetPlaylist = await playlistModel.findById(targetId).populate("songs");
 

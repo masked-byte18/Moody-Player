@@ -245,9 +245,11 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         <NavLink to="/" onClick={handleCloseMobile}>
           Mood
         </NavLink>
-        <NavLink to="/playlists" onClick={handleCloseMobile}>
-          Playlists
-        </NavLink>
+        {isLoggedIn ? (
+          <NavLink to="/playlists" onClick={handleCloseMobile}>
+            Playlists
+          </NavLink>
+        ) : null}
         <NavLink to="/discover" onClick={handleCloseMobile}>
           Discover
         </NavLink>

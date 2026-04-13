@@ -2,6 +2,7 @@ const REQUESTS_KEY = "moody-collab-requests";
 const DRAFTS_KEY = "moody-collab-drafts";
 const COLLABS_KEY = "moody-collab-access";
 const ACTIVITY_KEY = "moody-collab-activity";
+const DEMO_DATA_ENABLED = true;
 
 const safeParse = (value, fallback) => {
   try {
@@ -16,6 +17,36 @@ const readStorage = (key, fallback) => safeParse(localStorage.getItem(key), fall
 const writeStorage = (key, value) => {
   localStorage.setItem(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent("moody-collaboration-updated"));
+};
+
+const isDemoId = (value = "") => {
+  const id = String(value || "");
+  return id.startsWith("demo-") || id.startsWith("dummy-");
+};
+
+const removeDemoDataFromStorage = () => {
+  const requests = readStorage(REQUESTS_KEY, []).filter(
+    (request) => !request?.isDemo && !isDemoId(request?.id) && !isDemoId(request?.playlistId)
+  );
+  localStorage.setItem(REQUESTS_KEY, JSON.stringify(requests));
+
+  const drafts = readStorage(DRAFTS_KEY, {});
+  const cleanedDrafts = Object.fromEntries(
+    Object.entries(drafts).filter(([playlistId, draft]) => !isDemoId(playlistId) && !draft?.isDemo)
+  );
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(cleanedDrafts));
+
+  const access = readStorage(COLLABS_KEY, {});
+  const cleanedAccess = Object.fromEntries(
+    Object.entries(access).filter(([playlistId]) => !isDemoId(playlistId))
+  );
+  localStorage.setItem(COLLABS_KEY, JSON.stringify(cleanedAccess));
+
+  const activity = readStorage(ACTIVITY_KEY, {});
+  const cleanedActivity = Object.fromEntries(
+    Object.entries(activity).filter(([playlistId]) => !isDemoId(playlistId))
+  );
+  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(cleanedActivity));
 };
 
 export const getCollaborationRequests = () => readStorage(REQUESTS_KEY, []);
@@ -81,6 +112,11 @@ export const createCollaborationRequest = ({
 };
 
 export const ensureDummyCollaborationRequests = (username) => {
+  if (!DEMO_DATA_ENABLED) {
+    removeDemoDataFromStorage();
+    return;
+  }
+
   const normalized = (username || "").trim().toLowerCase();
   if (!normalized || normalized === "guest") return;
 
@@ -125,6 +161,32 @@ export const ensureDummyCollaborationRequests = (username) => {
       createdAt: new Date(Date.now() - 1000 * 60 * 52).toISOString(),
       isDemo: true,
     },
+    {
+      id: `collab-demo-${normalized}-4`,
+      playlistId: "dummy-djarya-night-drive",
+      playlistName: "Night Drive Pulse",
+      ownerUsername: normalized,
+      ownerDisplayName: normalized,
+      requesterUsername: "aurakit",
+      requesterDisplayName: "Aura Kit",
+      message: "Can I remove two tracks and make this playlist more calm?",
+      status: "rejected",
+      createdAt: new Date(Date.now() - 1000 * 60 * 140).toISOString(),
+      isDemo: true,
+    },
+    {
+      id: `collab-demo-outgoing-${normalized}-5`,
+      playlistId: "dummy-moonframes-cloud-radio",
+      playlistName: "Cloud Radio",
+      ownerUsername: "moonframes",
+      ownerDisplayName: "Moon Frames",
+      requesterUsername: normalized,
+      requesterDisplayName: normalized,
+      message: "I can help tune the transition after Paper Skies.",
+      status: "accepted",
+      createdAt: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
+      isDemo: true,
+    },
   ];
 
   const existingIds = new Set(requests.map((request) => request.id));
@@ -140,8 +202,12 @@ export const ensureDummyCollaborationRequests = (username) => {
   const access = readStorage(COLLABS_KEY, {});
   const currentCollaborators = new Set(access["dummy-moonframes-cloud-radio"] || []);
   const hadDemoCollaborator = currentCollaborators.has("djarya");
+  const hadAcceptedOutgoingCollaborator = currentCollaborators.has(normalized);
   currentCollaborators.add("djarya");
+  currentCollaborators.add(normalized);
   if (!hadDemoCollaborator) {
+    access["dummy-moonframes-cloud-radio"] = [...currentCollaborators];
+  } else if (!hadAcceptedOutgoingCollaborator) {
     access["dummy-moonframes-cloud-radio"] = [...currentCollaborators];
   }
 
@@ -180,8 +246,32 @@ export const ensureDummyCollaborationRequests = (username) => {
   }
 
   const drafts = readStorage(DRAFTS_KEY, {});
+  const ownedPlaylistId = `demo-owned-${normalized}`;
   const managedPlaylistId = `demo-managed-${normalized}`;
+  const managedPlaylistId2 = `demo-managed-2-${normalized}`;
+  const hasOwnedDraft = Boolean(drafts[ownedPlaylistId]);
   const hasManagedDraft = Boolean(drafts[managedPlaylistId]);
+  const hasManagedDraft2 = Boolean(drafts[managedPlaylistId2]);
+  if (!hasOwnedDraft) {
+    drafts[ownedPlaylistId] = {
+      _id: ownedPlaylistId,
+      name: "Private Mood Lab",
+      description: "Your personal playlist mock for rename/publish/delete preview.",
+      coverImage: "",
+      ownerUsername: normalized,
+      ownerDisplayName: normalized,
+      isFeatured: false,
+      contributors: [],
+      songs: [
+        {
+          _id: `demo-owned-song-${normalized}-1`,
+          title: "City Pulse",
+          artist: "Kairo",
+          mood: "happy",
+        },
+      ],
+    };
+  }
   if (!hasManagedDraft) {
     drafts[managedPlaylistId] = {
       _id: managedPlaylistId,
@@ -191,6 +281,7 @@ export const ensureDummyCollaborationRequests = (username) => {
       ownerUsername: normalized,
       ownerDisplayName: normalized,
       isFeatured: false,
+      contributors: ["moonframes", "novaecho"],
       songs: [
         {
           _id: `demo-song-${normalized}-1`,
@@ -211,6 +302,36 @@ export const ensureDummyCollaborationRequests = (username) => {
       ],
     };
   }
+  if (!hasManagedDraft2) {
+    drafts[managedPlaylistId2] = {
+      _id: managedPlaylistId2,
+      name: "Blue Hour Collective",
+      description: "Second managed mock playlist for contributor analytics preview.",
+      coverImage: "",
+      ownerUsername: normalized,
+      ownerDisplayName: normalized,
+      isFeatured: true,
+      contributors: ["vinylfox", "aurakit"],
+      songs: [
+        {
+          _id: `demo-song2-${normalized}-1`,
+          title: "Afterglow Steps",
+          artist: "Vanta",
+          mood: "neutral",
+          addedByUsername: "vinylfox",
+          addedByDisplayName: "Vinyl Fox",
+        },
+        {
+          _id: `demo-song2-${normalized}-2`,
+          title: "Glass Tides",
+          artist: "Aura Kit",
+          mood: "sad",
+          addedByUsername: "aurakit",
+          addedByDisplayName: "Aura Kit",
+        },
+      ],
+    };
+  }
 
   const managedCollaborators = new Set(access[managedPlaylistId] || []);
   const hadManagedCollaborators =
@@ -219,6 +340,15 @@ export const ensureDummyCollaborationRequests = (username) => {
   managedCollaborators.add("novaecho");
   if (!hadManagedCollaborators) {
     access[managedPlaylistId] = [...managedCollaborators];
+  }
+
+  const managedCollaborators2 = new Set(access[managedPlaylistId2] || []);
+  const hadManagedCollaborators2 =
+    managedCollaborators2.has("vinylfox") && managedCollaborators2.has("aurakit");
+  managedCollaborators2.add("vinylfox");
+  managedCollaborators2.add("aurakit");
+  if (!hadManagedCollaborators2) {
+    access[managedPlaylistId2] = [...managedCollaborators2];
   }
 
   const managedActivity = activity[managedPlaylistId] || [];
@@ -265,16 +395,71 @@ export const ensureDummyCollaborationRequests = (username) => {
     activity[managedPlaylistId] = managedActivity;
   }
 
-  const accessChanged = !hadDemoCollaborator || !hadManagedCollaborators;
-  const draftsChanged = !hasManagedDraft;
-  if (!requestsChanged && !accessChanged && !activityChanged && !draftsChanged && !managedActivityChanged) {
+  const managedActivity2 = activity[managedPlaylistId2] || [];
+  let managedActivityChanged2 = false;
+  if (!managedActivity2.some((entry) => entry.id === `activity-managed2-${normalized}-1`)) {
+    managedActivity2.unshift(
+      {
+        id: `activity-managed2-${normalized}-1`,
+        actorUsername: "vinylfox",
+        actorDisplayName: "Vinyl Fox",
+        playlistId: managedPlaylistId2,
+        playlistName: "Blue Hour Collective",
+        type: "add_song",
+        text: 'added "Afterglow Steps" by Vanta.',
+        createdAt: new Date(Date.now() - 1000 * 60 * 39).toISOString(),
+        isDemo: true,
+      },
+      {
+        id: `activity-managed2-${normalized}-2`,
+        actorUsername: "aurakit",
+        actorDisplayName: "Aura Kit",
+        playlistId: managedPlaylistId2,
+        playlistName: "Blue Hour Collective",
+        type: "delete_song",
+        text: 'deleted "Late Window" from the playlist.',
+        createdAt: new Date(Date.now() - 1000 * 60 * 88).toISOString(),
+        isDemo: true,
+      },
+      {
+        id: `activity-managed2-${normalized}-3`,
+        actorUsername: "vinylfox",
+        actorDisplayName: "Vinyl Fox",
+        playlistId: managedPlaylistId2,
+        playlistName: "Blue Hour Collective",
+        type: "reorder",
+        text: "reordered tracks to keep a calmer build-up.",
+        createdAt: new Date(Date.now() - 1000 * 60 * 166).toISOString(),
+        isDemo: true,
+      }
+    );
+    managedActivityChanged2 = true;
+  }
+  if (managedActivityChanged2) {
+    activity[managedPlaylistId2] = managedActivity2;
+  }
+
+  const accessChanged =
+    !hadDemoCollaborator ||
+    !hadAcceptedOutgoingCollaborator ||
+    !hadManagedCollaborators ||
+    !hadManagedCollaborators2;
+  const draftsChanged = !hasManagedDraft || !hasManagedDraft2 || !hasOwnedDraft;
+  if (
+    !requestsChanged &&
+    !accessChanged &&
+    !activityChanged &&
+    !draftsChanged &&
+    !managedActivityChanged &&
+    !managedActivityChanged2
+  ) {
     return;
   }
 
   if (accessChanged) {
     localStorage.setItem(COLLABS_KEY, JSON.stringify(access));
   }
-  if (activityChanged || managedActivityChanged) {
+  if (activityChanged || managedActivityChanged || managedActivityChanged2) {
     localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activity));
   }
   if (draftsChanged) {

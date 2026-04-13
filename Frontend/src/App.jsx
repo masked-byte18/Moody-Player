@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import MoodPage from "./components/MoodPage";
 import PlaylistPage from "./components/PlaylistPage";
@@ -33,6 +33,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopCurrentSong, setLoopCurrentSong] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isAuthenticated = Boolean(userState.token && userState.username && userState.username !== "guest");
 
   useEffect(() => {
     let cancelled = false;
@@ -314,50 +315,61 @@ function App() {
         <Route
           path="/playlists"
           element={
-            <PlaylistsPage
-              activePlaylistId={queueSource.playlistId}
-              queue={queue}
-              queueSource={queueSource}
-              isPlaying={isPlaying}
-              currentIndex={currentIndex}
-              onPlayPlaylist={handlePlayPlaylist}
-              onPlayPause={handlePlayPause}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onStop={handleStop}
-              onUpdateActivePlaylist={handleUpdateActivePlaylist}
-              loopCurrentSong={loopCurrentSong}
-              onToggleLoop={handleToggleLoop}
-              activeUser={userState.username}
-              activeDisplayName={userState.displayName}
-              authToken={userState.token}
-            />
+            isAuthenticated ? (
+              <PlaylistsPage
+                activePlaylistId={queueSource.playlistId}
+                queue={queue}
+                queueSource={queueSource}
+                isPlaying={isPlaying}
+                currentIndex={currentIndex}
+                onPlayPlaylist={handlePlayPlaylist}
+                onPlayPause={handlePlayPause}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onStop={handleStop}
+                onUpdateActivePlaylist={handleUpdateActivePlaylist}
+                loopCurrentSong={loopCurrentSong}
+                onToggleLoop={handleToggleLoop}
+                activeUser={userState.username}
+                activeDisplayName={userState.displayName}
+                authToken={userState.token}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
         <Route
           path="/playlists/:id"
           element={
-            <PlaylistPage
-              activePlaylistId={queueSource.playlistId}
-              queue={queue}
-              queueSource={queueSource}
-              isPlaying={isPlaying}
-              currentIndex={currentIndex}
-              onPlayPlaylist={handlePlayPlaylist}
-              onPlayPause={handlePlayPause}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              onStop={handleStop}
-              onUpdateActivePlaylist={handleUpdateActivePlaylist}
-              loopCurrentSong={loopCurrentSong}
-              onToggleLoop={handleToggleLoop}
-              activeUser={userState.username}
-              activeDisplayName={userState.displayName}
-              authToken={userState.token}
-            />
+            isAuthenticated ? (
+              <PlaylistPage
+                activePlaylistId={queueSource.playlistId}
+                queue={queue}
+                queueSource={queueSource}
+                isPlaying={isPlaying}
+                currentIndex={currentIndex}
+                onPlayPlaylist={handlePlayPlaylist}
+                onPlayPause={handlePlayPause}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onStop={handleStop}
+                onUpdateActivePlaylist={handleUpdateActivePlaylist}
+                loopCurrentSong={loopCurrentSong}
+                onToggleLoop={handleToggleLoop}
+                activeUser={userState.username}
+                activeDisplayName={userState.displayName}
+                authToken={userState.token}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
-        <Route path="/playlists/:id/activity" element={<PlaylistActivityPage />} />
+        <Route
+          path="/playlists/:id/activity"
+          element={isAuthenticated ? <PlaylistActivityPage /> : <Navigate to="/login" replace />}
+        />
         <Route
           path="/discover"
           element={
@@ -378,7 +390,13 @@ function App() {
         />
         <Route
           path="/notifications"
-          element={<NotificationsPage activeUser={userState.username} />}
+          element={
+            isAuthenticated ? (
+              <NotificationsPage activeUser={userState.username} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
         <Route path="/login" element={<LoginPage onAuthSuccess={handleUserStateChange} />} />
         <Route path="/signup" element={<SignupPage onAuthSuccess={handleUserStateChange} />} />

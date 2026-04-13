@@ -6,10 +6,12 @@ import { getDummyPlaylistById } from "../data/discoverDummyData";
 import {
   canEditPlaylist,
   createCollaborationRequest,
+  getCollaborationAccessMap,
   getPlaylistDraft,
   hasPendingCollaborationRequest,
   isPlaylistCollaborator,
   logContributionActivity,
+  removePlaylistCollaborator,
   savePlaylistDraft,
 } from "../utils/collaborationInbox";
 import "./PlaylistPage.css";
@@ -92,9 +94,16 @@ const PlaylistPage = ({
         return;
       }
 
+      const localDraft = getPlaylistDraft(id);
+      if (localDraft?._id === id && !String(id).match(/^[0-9a-fA-F]{24}$/)) {
+        setPlaylist(localDraft);
+        setLocalSongs(localDraft.songs || []);
+        setLoading(false);
+        return;
+      }
+
       const response = await axios.get(`${API}/playlists/${id}`);
       const apiPlaylist = response.data.playlist;
-      const localDraft = getPlaylistDraft(id);
       const mergedPlaylist = localDraft
         ? {
             ...apiPlaylist,
@@ -106,9 +115,15 @@ const PlaylistPage = ({
       setLocalSongs(mergedPlaylist?.songs || []);
     } catch (error) {
       console.error("Failed to load playlist:", error);
+      const localDraft = getPlaylistDraft(id);
+      if (localDraft?._id === id) {
+        setPlaylist(localDraft);
+        setLocalSongs(localDraft.songs || []);
+        return;
+      }
+
       const dummyPlaylist = getDummyPlaylistById(id);
       if (dummyPlaylist) {
-        const localDraft = getPlaylistDraft(id);
         const mergedPlaylist = localDraft
           ? {
               ...dummyPlaylist,
@@ -550,6 +565,26 @@ const PlaylistPage = ({
     alert("Contribution request sent to the playlist owner.");
   };
 
+  const handleContributeButtonClick = () => {
+    if (!playlist || isOwner) return;
+
+    if (isCollaborator) {
+      const confirmed = window.confirm("Stop collaborating on this playlist?");
+      if (!confirmed) return;
+      removePlaylistCollaborator(playlist._id, activeUser);
+      setShowContributeModal(false);
+      setPendingRequest(false);
+      alert("You stopped collaborating on this playlist.");
+      return;
+    }
+
+    if (pendingRequest) {
+      return;
+    }
+
+    setShowContributeModal(true);
+  };
+
   if (loading) {
     return (
       <div className="page-shell">
@@ -582,6 +617,11 @@ const PlaylistPage = ({
   const playlistOwnerUsername = location.state?.ownerUsername || playlist.ownerUsername;
   const isOwner = playlistOwnerUsername === activeUser;
   const isCollaborator = isPlaylistCollaborator(playlist._id, activeUser);
+  const collabAccessMap = getCollaborationAccessMap();
+  const contributorCount = Array.isArray(playlist?.contributors)
+    ? playlist.contributors.length
+    : (collabAccessMap[playlist?._id] || []).length;
+  const isManagedPlaylist = isOwner && contributorCount > 0;
   const canContribute = canEditPlaylist({ ...playlist, ownerUsername: playlistOwnerUsername }, activeUser);
   const shouldShowOwnerLink =
     Boolean(playlistOwnerUsername) &&
@@ -606,14 +646,16 @@ const PlaylistPage = ({
             </div>
           </div>
           <div className="playlist-sticky-actions">
-            <button
-              type="button"
-              className="playlist-icon-button"
-              onClick={openContributionAnalytics}
-              title="Contribution notifications"
-            >
-              <i className="ri-notification-3-line"></i>
-            </button>
+            {isManagedPlaylist ? (
+              <button
+                type="button"
+                className="playlist-icon-button"
+                onClick={openContributionAnalytics}
+                title="Contribution notifications"
+              >
+                <i className="ri-notification-3-line"></i>
+              </button>
+            ) : null}
             <button
               type="button"
               className="playlist-icon-button playlist-icon-button-primary"
@@ -636,9 +678,15 @@ const PlaylistPage = ({
               <button
                 type="button"
                 className="playlist-contribute-button"
-                onClick={() => setShowContributeModal(true)}
+                onClick={handleContributeButtonClick}
                 disabled={pendingRequest}
-                title={isCollaborator ? "You can already edit this playlist" : "Request to contribute"}
+                title={
+                  isCollaborator
+                    ? "Stop collaborating"
+                    : pendingRequest
+                      ? "Request already sent"
+                      : "Request to contribute"
+                }
               >
                 <i className={isCollaborator ? "ri-group-line" : "ri-edit-2-line"}></i>
                 <span>

@@ -27,6 +27,22 @@ export const getDummyFriendNotifications = (username) => {
       message: "started following your profile and liked your latest mood mix.",
       createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
     },
+    {
+      id: `friend-request-${normalized}-2`,
+      type: "request",
+      fromUsername: "vinylfox",
+      fromDisplayName: "Vinyl Fox",
+      message: "sent a request to co-curate your energetic playlists.",
+      createdAt: new Date(Date.now() - 1000 * 60 * 190).toISOString(),
+    },
+    {
+      id: `friend-update-${normalized}-3`,
+      type: "update",
+      fromUsername: "aurakit",
+      fromDisplayName: "Aura Kit",
+      message: "published a new neutral-focus discover playlist.",
+      createdAt: new Date(Date.now() - 1000 * 60 * 260).toISOString(),
+    },
   ];
 };
 
@@ -55,6 +71,20 @@ export const getDummyFriendsList = (username) => {
       displayName: "Nova Echo",
       mood: "Happy",
       note: "Likes sharing upbeat community mixes.",
+    },
+    {
+      id: `friend-list-${normalized}-4`,
+      username: "vinylfox",
+      displayName: "Vinyl Fox",
+      mood: "Focused",
+      note: "Builds deep-work playlists with smooth transitions.",
+    },
+    {
+      id: `friend-list-${normalized}-5`,
+      username: "aurakit",
+      displayName: "Aura Kit",
+      mood: "Calm",
+      note: "Collects mellow and neutral listening sessions.",
     },
   ];
 };
