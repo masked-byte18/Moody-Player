@@ -78,11 +78,6 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName }) => {
     [friends, username]
   );
 
-  const totalSongs = useMemo(
-    () => publicPlaylists.reduce((count, playlist) => count + (playlist.songs?.length || 0), 0),
-    [publicPlaylists]
-  );
-
   const filteredPlaylists = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     if (!query) return publicPlaylists;

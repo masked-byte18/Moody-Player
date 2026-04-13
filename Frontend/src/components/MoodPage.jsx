@@ -21,6 +21,9 @@ const MoodPage = ({
   onStop,
   loopCurrentSong,
   onToggleLoop,
+  activeUser,
+  authToken,
+  moodLibrary,
 }) => {
   const isMoodQueue = queueSource?.type === "mood";
   const currentSong = isMoodQueue && queue[currentIndex];
@@ -30,12 +33,18 @@ const MoodPage = ({
       <div className="controls-section">
         <div className="upload-section">
           <h3>Upload & Analyze Song</h3>
-          <SongMoodDetector onSongAdded={onSongAdded} />
+          <SongMoodDetector onSongAdded={onSongAdded} activeUser={activeUser} authToken={authToken} />
         </div>
 
         <div className="mood-detection-section">
           <h3>Detect Your Mood</h3>
-          <FacialExpression onMoodDetected={onMoodDetected} />
+          <FacialExpression
+            onMoodDetected={onMoodDetected}
+            authToken={authToken}
+            moodSongs={moodSongs}
+            moodLibrary={moodLibrary}
+            activeUser={activeUser}
+          />
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import "./App.css";
 import MoodPage from "./components/MoodPage";
@@ -6,6 +6,8 @@ import PlaylistPage from "./components/PlaylistPage";
 import PlaylistsPage from "./components/PlaylistsPage";
 import FeaturedHubPage from "./components/FeaturedHubPage";
 import DiscoverProfilePage from "./components/DiscoverProfilePage";
+import NotificationsPage from "./components/NotificationsPage";
+import PlaylistActivityPage from "./components/PlaylistActivityPage";
 import PlayerFooter from "./components/PlayerFooter";
 import Sidebar from "./components/Sidebar";
 import ThemeSwitcher from "./components/ThemeSwitcher";
@@ -24,12 +26,74 @@ function App() {
     return stored === "charcoal" || stored === "deepblue" ? stored : "charcoal";
   });
   const [moodSongs, setMoodSongs] = useState([]);
+  const [moodLibrary, setMoodLibrary] = useState([]);
   const [queue, setQueue] = useState([]);
   const [queueSource, setQueueSource] = useState({ type: "mood", playlistId: null });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopCurrentSong, setLoopCurrentSong] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPersistedMoodQueue = async () => {
+      const isGuest = !userState.token || !userState.username || userState.username === "guest";
+      if (isGuest) {
+        setMoodLibrary([]);
+        setMoodSongs([]);
+        if (queueSource.type === "mood") {
+          setQueue([]);
+          setCurrentIndex(0);
+          setIsPlaying(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch("http://localhost:3000/songs/mine", {
+          headers: {
+            Authorization: `Bearer ${userState.token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch mood queue");
+        }
+
+        const data = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        const persistedSongs = data.songs || [];
+        setMoodLibrary(persistedSongs);
+        setMoodSongs(persistedSongs);
+
+        if (queueSource.type === "mood") {
+          setQueue(persistedSongs);
+          setCurrentIndex(0);
+          setIsPlaying(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMoodLibrary([]);
+          setMoodSongs([]);
+          if (queueSource.type === "mood") {
+            setQueue([]);
+            setCurrentIndex(0);
+            setIsPlaying(false);
+          }
+        }
+      }
+    };
+
+    loadPersistedMoodQueue();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userState.token, userState.username]);
 
   const startQueue = (songs, source, index = 0) => {
     setQueue(songs);
@@ -44,9 +108,10 @@ function App() {
   };
 
   const handleSongAdded = (song) => {
-    const nextSongs = [...moodSongs, song];
-    setMoodSongs(nextSongs);
-    startQueue(nextSongs, { type: "mood", playlistId: null }, nextSongs.length - 1);
+    const nextLibrary = [...moodLibrary, song];
+    setMoodLibrary(nextLibrary);
+    setMoodSongs(nextLibrary);
+    startQueue(nextLibrary, { type: "mood", playlistId: null }, nextLibrary.length - 1);
   };
 
   const handlePlayFromMood = (index) => {
@@ -54,6 +119,7 @@ function App() {
   };
 
   const handleRemoveFromMood = ({ queue: nextQueue, currentIndex: nextIndex }) => {
+    setMoodLibrary(nextQueue);
     setMoodSongs(nextQueue);
     if (queueSource.type === "mood") {
       setQueue(nextQueue);
@@ -70,6 +136,11 @@ function App() {
     try {
       const response = await fetch(`http://localhost:3000/songs/${songId}`, {
         method: "DELETE",
+        headers: userState.token
+          ? {
+              Authorization: `Bearer ${userState.token}`,
+            }
+          : {},
       });
 
       if (!response.ok) {
@@ -77,6 +148,7 @@ function App() {
       }
 
       const nextQueue = moodSongs.filter((_, i) => i !== index);
+      setMoodLibrary(nextQueue);
       let nextIndex = currentIndex;
       if (!nextQueue.length) {
         nextIndex = 0;
@@ -133,7 +205,10 @@ function App() {
     const normalized = (nextUser?.username || "guest").trim().toLowerCase() || "guest";
     const nextDisplayName = (nextUser?.displayName || normalized).trim() || normalized;
     const nextProfilePhoto = nextUser?.profilePhoto || "";
-    const nextToken = nextUser?.token || "";
+    const nextToken =
+      typeof nextUser?.token === "string" && nextUser.token.trim()
+        ? nextUser.token
+        : userState.token;
 
     const merged = {
       username: normalized,
@@ -230,6 +305,9 @@ function App() {
               onStop={handleStop}
               loopCurrentSong={loopCurrentSong}
               onToggleLoop={handleToggleLoop}
+              activeUser={userState.username}
+              authToken={userState.token}
+              moodLibrary={moodLibrary}
             />
           }
         />
@@ -274,10 +352,12 @@ function App() {
               loopCurrentSong={loopCurrentSong}
               onToggleLoop={handleToggleLoop}
               activeUser={userState.username}
+              activeDisplayName={userState.displayName}
               authToken={userState.token}
             />
           }
         />
+        <Route path="/playlists/:id/activity" element={<PlaylistActivityPage />} />
         <Route
           path="/discover"
           element={
@@ -295,6 +375,10 @@ function App() {
               activeDisplayName={userState.displayName}
             />
           }
+        />
+        <Route
+          path="/notifications"
+          element={<NotificationsPage activeUser={userState.username} />}
         />
         <Route path="/login" element={<LoginPage onAuthSuccess={handleUserStateChange} />} />
         <Route path="/signup" element={<SignupPage onAuthSuccess={handleUserStateChange} />} />

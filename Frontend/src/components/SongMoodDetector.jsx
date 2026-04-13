@@ -3,7 +3,7 @@ import axios from "axios";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import "./SongMoodDetector.css";
 
-export default function SongMoodDetector({ onSongAdded }) {
+export default function SongMoodDetector({ onSongAdded, activeUser, authToken }) {
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
   const [title, setTitle] = useState("");
@@ -16,28 +16,61 @@ export default function SongMoodDetector({ onSongAdded }) {
     setFileName(file.name);
     setUploading(true);
 
-    const mood = await analyzeAudioMood(file);
+    try {
+      const mood = await analyzeAudioMood(file);
+      const formData = new FormData();
+      const resolvedTitle = title.trim() || deriveTitleFromFile(file);
+      const resolvedArtist = artist.trim() || "Unknown";
+      const isGuest = !activeUser || activeUser === "guest" || !authToken;
 
-    // 📡 Send to backend to store
-    const formData = new FormData();
-    const resolvedTitle = title.trim() || deriveTitleFromFile(file);
-    const resolvedArtist = artist.trim() || "Unknown";
-    formData.append("audio", file);
-    formData.append("title", resolvedTitle);
-    formData.append("artist", resolvedArtist);
-    formData.append("mood", mood);
+      if (isGuest) {
+        const localTempSong = {
+          _id: "",
+          title: resolvedTitle,
+          artist: resolvedArtist,
+          mood,
+          audio: URL.createObjectURL(file),
+          isLocalTemp: true,
+        };
+        if (onSongAdded) {
+          onSongAdded(localTempSong);
+        }
+        alert(`Guest mode: added temporary song. Mood: ${mood}`);
+        return;
+      }
 
-    await axios.post("http://localhost:3000/songs", formData).then(response => {
+      formData.append("audio", file);
+      formData.append("title", resolvedTitle);
+      formData.append("artist", resolvedArtist);
+      formData.append("mood", mood);
+
+      const response = await axios.post("http://localhost:3000/songs", formData, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       if (onSongAdded && response.data.song) {
         onSongAdded(response.data.song);
       }
-    });
 
-    setUploading(false);
-    alert(`Song analyzed and saved! Mood: ${mood}`);
-    setFileName("");
-    setTitle("");
-    setArtist("");
+      alert(`Song analyzed and saved! Mood: ${mood}`);
+    } catch (error) {
+      if (error?.response?.status === 409) {
+        const existingSong = error?.response?.data?.song;
+        if (onSongAdded && existingSong) {
+          onSongAdded(existingSong);
+        }
+        alert("This song already exists. Added existing song to your mood queue.");
+      } else {
+        alert(error?.response?.data?.message || "Failed to upload song.");
+      }
+    } finally {
+      setUploading(false);
+      setFileName("");
+      setTitle("");
+      setArtist("");
+      e.target.value = "";
+    }
   };
 
   return (

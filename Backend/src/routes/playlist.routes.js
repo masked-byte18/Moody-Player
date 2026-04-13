@@ -234,6 +234,29 @@ router.delete("/playlists/:id", requireAuth, async (req, res) => {
   }
 });
 
+router.put("/playlists/:id/publish", requireAuth, async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (req.user.username !== playlist.ownerUsername) {
+      return res.status(403).json({ message: "Only the owner can publish this playlist" });
+    }
+
+    const nextFeatured = Boolean(req.body?.isFeatured);
+    playlist.isFeatured = nextFeatured;
+    playlist.featuredAt = nextFeatured ? new Date() : null;
+    await playlist.save();
+
+    res.status(200).json({ message: nextFeatured ? "Playlist published" : "Playlist unpublished", playlist });
+  } catch (error) {
+    console.error("Playlist publish error:", error);
+    res.status(500).json({ message: "Failed to update publish status" });
+  }
+});
+
 router.post(
   "/playlists/:id/songs/upload",
   requireAuth,
@@ -259,7 +282,11 @@ router.post(
       }
 
       const audioHash = createAudioHash(req.file.buffer);
-      let song = await findSongConflict({ title: cleanTitle, audioHash });
+      let song = await findSongConflict({
+        title: cleanTitle,
+        audioHash,
+        ownerUserId: req.user._id,
+      });
 
       if (song) {
         const alreadyInPlaylist = playlist.songs.some(
@@ -279,6 +306,8 @@ router.post(
           audio: fileData.url,
           audioHash,
           mood: String(req.body.mood || "").trim(),
+          ownerUserId: req.user._id,
+          ownerUsername: req.user.username,
         });
       }
 

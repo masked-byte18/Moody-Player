@@ -6,7 +6,7 @@ const createTitleKey = (title = "") => String(title).trim().toLowerCase().replac
 
 const createAudioHash = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
 
-const findSongConflict = async ({ title, audioHash }) => {
+const findSongConflict = async ({ title, audioHash, ownerUserId }) => {
   const conditions = [];
 
   if (title) {
@@ -21,7 +21,12 @@ const findSongConflict = async ({ title, audioHash }) => {
     return null;
   }
 
-  return songModel.findOne({ $or: conditions });
+  const filter = { $or: conditions };
+  if (ownerUserId) {
+    filter.ownerUserId = ownerUserId;
+  }
+
+  return songModel.findOne(filter);
 };
 
 const removeSongIfUnused = async (songId) => {

@@ -79,6 +79,13 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.brand-block-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
 .brand-block h2 {
   margin: 0;
   font-size: 1.95rem;
@@ -90,6 +97,43 @@
   margin: 0.35rem 0 0;
   color: var(--text-muted);
   font-size: 0.92rem;
+}
+
+.sidebar-inbox-icon-button {
+  position: relative;
+  width: 2.7rem;
+  height: 2.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-inbox-icon-button i {
+  font-size: 1.05rem;
+}
+
+.sidebar-inbox-badge {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .profile-entry {
@@ -364,5 +408,119 @@
   .sidebar-mobile-header {
     display: flex;
     justify-content: flex-end;
+  }
+
+  .left-sidebar {
+    padding: 1rem 0.95rem 0.9rem;
+    gap: 0.9rem;
+  }
+
+  .brand-block {
+    padding: 0.35rem 0.1rem 0.75rem;
+  }
+
+  .brand-block h2 {
+    font-size: 1.72rem;
+  }
+
+  .brand-block p {
+    margin-top: 0.22rem;
+    font-size: 0.82rem;
+  }
+
+  .sidebar-inbox-icon-button,
+  .sidebar-close-btn {
+    width: 2.45rem;
+    height: 2.45rem;
+    border-radius: 14px;
+  }
+
+  .profile-entry {
+    padding: 0.78rem;
+    gap: 0.72rem;
+    border-radius: 18px;
+  }
+
+  .profile-entry strong {
+    font-size: 0.92rem;
+  }
+
+  .profile-entry small {
+    font-size: 0.8rem;
+  }
+
+  .avatar-photo,
+  .avatar-fallback {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar-nav {
+    gap: 0.38rem;
+  }
+
+  .sidebar-nav a {
+    padding: 0.72rem 0.82rem;
+    border-radius: 14px;
+    font-size: 0.92rem;
+  }
+
+  .sidebar-social-row {
+    padding: 0.68rem 0.8rem;
+    border-radius: 14px;
+  }
+
+  .sidebar-social-row span {
+    font-size: 0.78rem;
+  }
+
+  .sidebar-social-row strong {
+    font-size: 0.88rem;
+  }
+
+  .ghost-btn,
+  .fill-btn,
+  .logout-btn {
+    padding: 0.72rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .left-sidebar {
+    width: min(300px, 88vw);
+    padding: 0.88rem 0.82rem 0.82rem;
+    gap: 0.82rem;
+  }
+
+  .brand-block h2 {
+    font-size: 1.56rem;
+  }
+
+  .brand-block p {
+    font-size: 0.76rem;
+  }
+
+  .profile-entry {
+    padding: 0.72rem;
+  }
+
+  .avatar-photo,
+  .avatar-fallback {
+    width: 40px;
+    height: 40px;
+  }
+
+  .profile-entry strong {
+    font-size: 0.88rem;
+  }
+
+  .profile-entry small {
+    font-size: 0.76rem;
+  }
+
+  .sidebar-nav a {
+    padding: 0.66rem 0.76rem;
+    font-size: 0.88rem;
   }
 }

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { ensureDummyCollaborationRequests, getInboxRequestsForUser } from "../utils/collaborationInbox";
+import { getDummyFriendNotifications } from "../utils/notificationSamples";
 import "./Sidebar.css";
 
 const API = "http://localhost:3000";
@@ -13,19 +15,35 @@ const profileColor = (seed = "U") => {
 
 function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobile }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [openProfile, setOpenProfile] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(user.username || "guest");
   const [displayDraft, setDisplayDraft] = useState(user.displayName || "Guest");
   const [photoFile, setPhotoFile] = useState(null);
   const [friends, setFriends] = useState([]);
   const [socialStats, setSocialStats] = useState({ followersCount: 0, followingCount: 0 });
+  const [inboxRequests, setInboxRequests] = useState([]);
 
   const initialLetter = useMemo(
     () => (user.displayName?.trim()?.charAt(0) || user.username?.charAt(0) || "U").toUpperCase(),
     [user.displayName, user.username]
   );
   const isLoggedIn = Boolean(user.username && user.username !== "guest");
-  const authToken = localStorage.getItem("moody-auth-token") || "";
+  const authToken = user.token || "";
+
+  const handleUnauthorized = useCallback(() => {
+    onLogout();
+  }, [onLogout]);
+
+  const loadInboxRequests = useCallback(() => {
+    if (!isLoggedIn) {
+      setInboxRequests([]);
+      return;
+    }
+
+    ensureDummyCollaborationRequests(user.username);
+    setInboxRequests(getInboxRequestsForUser(user.username));
+  }, [isLoggedIn, user.username]);
 
   const loadFriends = useCallback(async () => {
     if (!isLoggedIn || !authToken) {
@@ -40,10 +58,14 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         },
       });
       setFriends(response.data.friends || []);
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       setFriends([]);
     }
-  }, [authToken, isLoggedIn]);
+  }, [authToken, handleUnauthorized, isLoggedIn]);
 
   const openProfileModal = async () => {
     setUsernameDraft(user.username || "guest");
@@ -71,21 +93,30 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         followersCount: response.data.followersCount || 0,
         followingCount: response.data.followingCount || 0,
       });
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       setSocialStats({ followersCount: 0, followingCount: friends.length || 0 });
     }
-  }, [authToken, friends.length, isLoggedIn, user.username]);
+  }, [authToken, friends.length, handleUnauthorized, isLoggedIn, user.username]);
 
   useEffect(() => {
-    if (!isLoggedIn || !authToken) {
-      setFriends([]);
-      setSocialStats({ followersCount: 0, followingCount: 0 });
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      loadFriends();
+      loadSocialStats();
+      loadInboxRequests();
+    });
 
-    loadFriends();
-    loadSocialStats();
-  }, [authToken, isLoggedIn, loadFriends, loadSocialStats, user.username, location.pathname]);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [authToken, isLoggedIn, loadFriends, loadInboxRequests, loadSocialStats, user.username, location.pathname]);
+
+  useEffect(() => {
+    const handleCollaborationUpdate = () => loadInboxRequests();
+    window.addEventListener("moody-collaboration-updated", handleCollaborationUpdate);
+    return () => window.removeEventListener("moody-collaboration-updated", handleCollaborationUpdate);
+  }, [loadInboxRequests]);
 
   const handleCloseMobile = () => {
     if (typeof onCloseMobile === "function") {
@@ -106,11 +137,22 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         formData.append("profilePhoto", photoFile);
       }
 
-      const response = await axios.put(`${API}/auth/profile`, formData);
-      onUserChange(response.data.user);
+      const response = await axios.put(`${API}/auth/profile`, formData, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      onUserChange({
+        ...response.data.user,
+        token: response.data.token || authToken,
+      });
       setPhotoFile(null);
       setOpenProfile(false);
     } catch (error) {
+      if (error?.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       alert(error?.response?.data?.message || "Failed to update profile");
     }
   };
@@ -133,6 +175,12 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
     }
   };
 
+  const totalNotificationCount = useMemo(() => {
+    const pendingCollab = inboxRequests.filter((request) => request.status === "pending").length;
+    const socialItems = getDummyFriendNotifications(user.username).length;
+    return pendingCollab + socialItems;
+  }, [inboxRequests, user.username]);
+
   return (
     <>
       <div
@@ -152,8 +200,31 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
           </button>
         </div>
       <div className="brand-block">
-        <h2>Moody</h2>
-        <p>Your Music Space</p>
+        <div className="brand-block-top">
+          <div>
+            <h2>Moody</h2>
+            <p>Your Music Space</p>
+          </div>
+          {isLoggedIn ? (
+            <button
+              type="button"
+              className="sidebar-inbox-icon-button"
+              onClick={() => {
+                handleCloseMobile();
+                navigate("/notifications");
+              }}
+              aria-label="Open notifications"
+              title="Notifications"
+            >
+              <i className="ri-mail-line"></i>
+              {totalNotificationCount > 0 ? (
+                <span className="sidebar-inbox-badge">
+                  {totalNotificationCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <button type="button" className="profile-entry" onClick={openProfileModal}>

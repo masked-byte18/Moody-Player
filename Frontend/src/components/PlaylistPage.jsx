@@ -3,6 +3,15 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import { getDummyPlaylistById } from "../data/discoverDummyData";
+import {
+  canEditPlaylist,
+  createCollaborationRequest,
+  getPlaylistDraft,
+  hasPendingCollaborationRequest,
+  isPlaylistCollaborator,
+  logContributionActivity,
+  savePlaylistDraft,
+} from "../utils/collaborationInbox";
 import "./PlaylistPage.css";
 import "./PlaylistsPage.css";
 
@@ -19,29 +28,6 @@ const createRandomOrder = (songs) => {
   return nextSongs;
 };
 
-const createMagicShuffle = (songs) => {
-  const buckets = songs.reduce((accumulator, song) => {
-    const mood = normalizeMood(song.mood);
-    if (!accumulator[mood]) accumulator[mood] = [];
-    accumulator[mood].push(song);
-    return accumulator;
-  }, {});
-
-  const moodPriority = Object.keys(buckets).sort((left, right) => buckets[right].length - buckets[left].length);
-  const orderedBuckets = moodPriority.map((mood) => createRandomOrder(buckets[mood]));
-  const shuffled = [];
-
-  while (orderedBuckets.some((bucket) => bucket.length > 0)) {
-    orderedBuckets.forEach((bucket) => {
-      if (bucket.length > 0) {
-        shuffled.push(bucket.shift());
-      }
-    });
-  }
-
-  return shuffled;
-};
-
 const PlaylistPage = ({
   activePlaylistId,
   queue,
@@ -52,6 +38,7 @@ const PlaylistPage = ({
   onPlayPause,
   onUpdateActivePlaylist,
   activeUser,
+  activeDisplayName,
   authToken,
 }) => {
   const { id } = useParams();
@@ -74,6 +61,9 @@ const PlaylistPage = ({
   const [openSongMenu, setOpenSongMenu] = useState(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [showContributeModal, setShowContributeModal] = useState(false);
+  const [contributeMessage, setContributeMessage] = useState("");
+  const [pendingRequest, setPendingRequest] = useState(false);
 
   const authConfig = authToken
     ? {
@@ -88,21 +78,46 @@ const PlaylistPage = ({
     try {
       const dummyFromState = location.state?.playlistData;
       if (dummyFromState?._id === id) {
-        setPlaylist(dummyFromState);
-        setLocalSongs(dummyFromState?.songs || []);
+        const localDraft = getPlaylistDraft(id);
+        const mergedPlaylist = localDraft
+          ? {
+              ...dummyFromState,
+              ...localDraft,
+              songs: localDraft.songs || dummyFromState?.songs || [],
+            }
+          : dummyFromState;
+        setPlaylist(mergedPlaylist);
+        setLocalSongs(mergedPlaylist?.songs || []);
         setLoading(false);
         return;
       }
 
       const response = await axios.get(`${API}/playlists/${id}`);
-      setPlaylist(response.data.playlist);
-      setLocalSongs(response.data.playlist?.songs || []);
+      const apiPlaylist = response.data.playlist;
+      const localDraft = getPlaylistDraft(id);
+      const mergedPlaylist = localDraft
+        ? {
+            ...apiPlaylist,
+            ...localDraft,
+            songs: localDraft.songs || apiPlaylist?.songs || [],
+          }
+        : apiPlaylist;
+      setPlaylist(mergedPlaylist);
+      setLocalSongs(mergedPlaylist?.songs || []);
     } catch (error) {
       console.error("Failed to load playlist:", error);
       const dummyPlaylist = getDummyPlaylistById(id);
       if (dummyPlaylist) {
-        setPlaylist(dummyPlaylist);
-        setLocalSongs(dummyPlaylist.songs || []);
+        const localDraft = getPlaylistDraft(id);
+        const mergedPlaylist = localDraft
+          ? {
+              ...dummyPlaylist,
+              ...localDraft,
+              songs: localDraft.songs || dummyPlaylist.songs || [],
+            }
+          : dummyPlaylist;
+        setPlaylist(mergedPlaylist);
+        setLocalSongs(mergedPlaylist.songs || []);
       } else {
         setPlaylist(null);
         setLocalSongs([]);
@@ -153,6 +168,30 @@ const PlaylistPage = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!playlist || !activeUser || activeUser === "guest") {
+      setPendingRequest(false);
+      return;
+    }
+
+    setPendingRequest(
+      hasPendingCollaborationRequest({
+        playlistId: playlist._id,
+        ownerUsername: playlist.ownerUsername,
+        requesterUsername: activeUser,
+      })
+    );
+  }, [activeUser, playlist]);
+
+  useEffect(() => {
+    const handleCollaborationUpdate = async () => {
+      await loadPlaylist();
+    };
+
+    window.addEventListener("moody-collaboration-updated", handleCollaborationUpdate);
+    return () => window.removeEventListener("moody-collaboration-updated", handleCollaborationUpdate);
+  }, [loadPlaylist]);
+
   const displayedSongs = useMemo(() => {
     if (!playlist) return [];
     if (activePlaylistId === playlist._id && queueSource?.type === "playlist" && queueSource?.playlistId === playlist._id) {
@@ -185,6 +224,7 @@ const PlaylistPage = ({
     const updatedPlaylist = { ...playlist, songs };
     setPlaylist(updatedPlaylist);
     setLocalSongs(songs);
+    savePlaylistDraft(playlist._id, { songs });
 
     if (activePlaylistId === playlist._id) {
       onUpdateActivePlaylist(updatedPlaylist, nextIndex);
@@ -200,6 +240,18 @@ const PlaylistPage = ({
     onPlayPlaylist(playablePlaylist, startIndex);
   };
 
+  const recordContribution = (type, text) => {
+    if (!playlist || !activeUser || activeUser === "guest" || isOwner || !isCollaborator) return;
+    logContributionActivity({
+      actorUsername: activeUser,
+      actorDisplayName: activeDisplayName || activeUser,
+      playlistId: playlist._id,
+      playlistName: playlist.name,
+      type,
+      text,
+    });
+  };
+
   const handlePlayCurrentPlaylist = (index = 0) => {
     playSongs(localSongs, index);
   };
@@ -213,17 +265,21 @@ const PlaylistPage = ({
     handlePlayCurrentPlaylist(0);
   };
 
+  const openContributionAnalytics = () => {
+    navigate(`/playlists/${playlist?._id}/activity`, {
+      state: {
+        playlistName: playlist?.name,
+      },
+    });
+  };
+
   const handleShufflePlay = () => {
     if (!localSongs.length) return;
     playSongs(createRandomOrder(localSongs), 0);
   };
 
-  const handleMagicShuffle = () => {
-    if (!localSongs.length) return;
-    playSongs(createMagicShuffle(localSongs), 0);
-  };
-
   const handleTemporaryRemove = (index) => {
+    const removedSong = localSongs[index];
     const nextSongs = localSongs.filter((_, songIndex) => songIndex !== index);
     let nextIndex = currentIndex;
 
@@ -236,14 +292,18 @@ const PlaylistPage = ({
     }
 
     syncPlaylistSongs(nextSongs, nextIndex);
+    if (removedSong) {
+      recordContribution("remove_song", `removed "${removedSong.title}" from the active playlist view.`);
+    }
   };
 
   const handleReorder = async (nextSongs, nextIndex) => {
     if (!playlist) return;
 
     syncPlaylistSongs(nextSongs, nextIndex);
+    recordContribution("reorder", "reordered the songs inside this playlist.");
 
-    if (!authConfig) return;
+    if (!authConfig || !isOwner) return;
 
     try {
       await axios.put(
@@ -305,13 +365,19 @@ const PlaylistPage = ({
 
   const handleDeleteSong = async (songId) => {
     if (!playlist || !songId) return;
-    if (!authConfig) {
-      alert("Please log in again to delete songs.");
-      return;
-    }
 
     const confirmed = window.confirm("Permanently delete this song from this playlist?");
     if (!confirmed) return;
+
+    if (!isOwner || !authConfig) {
+      const songToDelete = localSongs.find((song) => song._id === songId);
+      const nextSongs = localSongs.filter((song) => song._id !== songId);
+      syncPlaylistSongs(nextSongs, currentIndex >= nextSongs.length ? 0 : currentIndex);
+      if (songToDelete) {
+        recordContribution("delete_song", `deleted "${songToDelete.title}" from the playlist.`);
+      }
+      return;
+    }
 
     try {
       await axios.delete(`${API}/playlists/${playlist._id}/songs/${songId}?delete=true`, authConfig);
@@ -325,10 +391,6 @@ const PlaylistPage = ({
   const handleAddSong = async (event) => {
     event.preventDefault();
     if (!songFile || !playlist) return;
-    if (!authConfig) {
-      alert("Please log in again to add songs.");
-      return;
-    }
 
     setUploading(true);
 
@@ -342,15 +404,44 @@ const PlaylistPage = ({
     const resolvedTitle = songTitle.trim() || deriveTitleFromFile(songFile);
     const resolvedArtist = songArtist.trim() || "Unknown";
 
-    const formData = new FormData();
-    formData.append("audio", songFile);
-    formData.append("title", resolvedTitle);
-    formData.append("artist", resolvedArtist);
-    formData.append("mood", resolvedMood);
-
     try {
-      const response = await axios.post(`${API}/playlists/${playlist._id}/songs/upload`, formData, authConfig);
-      syncPlaylistSongs(response.data.playlist?.songs || [], currentIndex);
+      if (!isOwner || !authConfig) {
+        const existingName = localSongs.some(
+          (song) => (song.title || "").trim().toLowerCase() === resolvedTitle.trim().toLowerCase()
+        );
+        const existingFile = localSongs.some(
+          (song) =>
+            song.fileName &&
+            song.fileName.trim().toLowerCase() === (songFile.name || "").trim().toLowerCase()
+        );
+
+        if (existingName || existingFile) {
+          alert("Same song name or same file already exists in this collaborative playlist.");
+          return;
+        }
+
+        const nextSong = {
+          _id: `local-song-${Date.now()}`,
+          title: resolvedTitle,
+          artist: resolvedArtist,
+          mood: resolvedMood,
+          fileName: songFile.name || "",
+          addedByUsername: activeUser,
+          addedByDisplayName: activeDisplayName || activeUser,
+        };
+        syncPlaylistSongs([...localSongs, nextSong], currentIndex);
+        recordContribution("add_song", `added "${resolvedTitle}" by ${resolvedArtist}.`);
+      } else {
+        const formData = new FormData();
+        formData.append("audio", songFile);
+        formData.append("title", resolvedTitle);
+        formData.append("artist", resolvedArtist);
+        formData.append("mood", resolvedMood);
+
+        const response = await axios.post(`${API}/playlists/${playlist._id}/songs/upload`, formData, authConfig);
+        syncPlaylistSongs(response.data.playlist?.songs || [], currentIndex);
+      }
+
       setShowAddModal(false);
       resetAddSongForm();
     } catch (error) {
@@ -427,6 +518,38 @@ const PlaylistPage = ({
     }
   };
 
+  const handleSubmitContributionRequest = () => {
+    if (!playlist) return;
+    if (!activeUser || activeUser === "guest") {
+      alert("Please log in to send a contribution request.");
+      return;
+    }
+
+    if (isOwner || isCollaborator) {
+      setShowContributeModal(false);
+      return;
+    }
+
+    if (pendingRequest) {
+      alert("You already sent a collaboration request for this playlist.");
+      return;
+    }
+
+    createCollaborationRequest({
+      playlistId: playlist._id,
+      playlistName: playlist.name,
+      ownerUsername: playlist.ownerUsername,
+      ownerDisplayName: location.state?.ownerDisplayName || playlist.ownerDisplayName || playlist.ownerUsername,
+      requesterUsername: activeUser,
+      requesterDisplayName: activeDisplayName || activeUser,
+      message: contributeMessage,
+    });
+    setPendingRequest(true);
+    setShowContributeModal(false);
+    setContributeMessage("");
+    alert("Contribution request sent to the playlist owner.");
+  };
+
   if (loading) {
     return (
       <div className="page-shell">
@@ -457,6 +580,9 @@ const PlaylistPage = ({
   const activeSong = isActivePlaylist && displayedSongs.length > 0 ? displayedSongs[currentIndex] : null;
   const copyTargets = userPlaylists.filter((item) => item._id !== playlist._id);
   const playlistOwnerUsername = location.state?.ownerUsername || playlist.ownerUsername;
+  const isOwner = playlistOwnerUsername === activeUser;
+  const isCollaborator = isPlaylistCollaborator(playlist._id, activeUser);
+  const canContribute = canEditPlaylist({ ...playlist, ownerUsername: playlistOwnerUsername }, activeUser);
   const shouldShowOwnerLink =
     Boolean(playlistOwnerUsername) &&
     playlistOwnerUsername !== activeUser &&
@@ -482,6 +608,14 @@ const PlaylistPage = ({
           <div className="playlist-sticky-actions">
             <button
               type="button"
+              className="playlist-icon-button"
+              onClick={openContributionAnalytics}
+              title="Contribution notifications"
+            >
+              <i className="ri-notification-3-line"></i>
+            </button>
+            <button
+              type="button"
               className="playlist-icon-button playlist-icon-button-primary"
               onClick={handlePrimaryPlayAction}
               disabled={!localSongs.length}
@@ -498,6 +632,20 @@ const PlaylistPage = ({
             >
               <i className="ri-shuffle-line"></i>
             </button>
+            {!isOwner && location.state?.source === "discover" ? (
+              <button
+                type="button"
+                className="playlist-contribute-button"
+                onClick={() => setShowContributeModal(true)}
+                disabled={pendingRequest}
+                title={isCollaborator ? "You can already edit this playlist" : "Request to contribute"}
+              >
+                <i className={isCollaborator ? "ri-group-line" : "ri-edit-2-line"}></i>
+                <span>
+                  {isCollaborator ? "Collaborating" : pendingRequest ? "Requested" : "Contribute"}
+                </span>
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -520,15 +668,19 @@ const PlaylistPage = ({
           </div>
         </section>
 
-        <button type="button" className="playlist-add-row" onClick={() => setShowAddModal(true)}>
-          <span className="playlist-add-icon">
-            <i className="ri-add-line"></i>
-          </span>
-          <span className="playlist-add-copy">
-            <strong>Add to this playlist</strong>
-            <span>Upload a fresh song into {playlist.name}</span>
-          </span>
-        </button>
+        {canContribute ? (
+          <button type="button" className="playlist-add-row" onClick={() => setShowAddModal(true)}>
+            <span className="playlist-add-icon">
+              <i className="ri-add-line"></i>
+            </span>
+            <span className="playlist-add-copy">
+              <strong>Add to this playlist</strong>
+              <span>
+                {isOwner ? `Upload a fresh song into ${playlist.name}` : `Contribute a new song to ${playlist.name}`}
+              </span>
+            </span>
+          </button>
+        ) : null}
 
         <section className="playlist-song-panel">
           <div className="playlist-song-panel-header">
@@ -564,10 +716,10 @@ const PlaylistPage = ({
                     className={`playlist-song-row ${isCurrentSong ? "is-active" : ""} ${
                       draggedIndex === index ? "is-dragging" : ""
                     } ${dragOverIndex === index && draggedIndex !== index ? "is-drop-target" : ""}`}
-                    draggable
-                    onDragStart={(event) => handleSongDragStart(index, event)}
-                    onDragOver={(event) => handleSongDragOver(index, event)}
-                    onDrop={(event) => handleSongDrop(index, event)}
+                    draggable={canContribute}
+                    onDragStart={(event) => canContribute && handleSongDragStart(index, event)}
+                    onDragOver={(event) => canContribute && handleSongDragOver(index, event)}
+                    onDrop={(event) => canContribute && handleSongDrop(index, event)}
                     onDragEnd={handleSongDragEnd}
                   >
                     <button
@@ -586,64 +738,75 @@ const PlaylistPage = ({
                     </button>
 
                     <div className="playlist-song-side">
+                      {song.addedByUsername ? (
+                        <button
+                          type="button"
+                          className="playlist-song-contributor"
+                          onClick={() => navigate(`/discover/users/${song.addedByUsername}`)}
+                        >
+                          @{song.addedByUsername}
+                        </button>
+                      ) : null}
                       <span className={`playlist-song-mood mood-${normalizeMood(song.mood)}`}>
                         {(song.mood || "unknown").toUpperCase()}
                       </span>
 
-                      <div className="playlist-song-menu-wrap" onClick={(event) => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="playlist-song-menu-button"
-                          onClick={(event) => toggleSongMenu(event, song._id)}
-                          title="Song options"
-                        >
-                          <i className="ri-more-2-fill"></i>
-                        </button>
-
-                        {openSongMenu?.songId === song._id ? (
-                          <div
-                            className="playlist-song-menu playlist-song-menu-floating"
-                            style={{
-                              top: `${openSongMenu.top}px`,
-                              left: `${openSongMenu.left}px`,
-                            }}
+                      {canContribute ? (
+                        <div className="playlist-song-menu-wrap" onClick={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="playlist-song-menu-button"
+                            onClick={(event) => toggleSongMenu(event, song._id)}
+                            title="Song options"
                           >
-                            <button
-                              type="button"
-                              className="playlist-song-menu-item"
-                              onClick={() => {
-                                setOpenSongMenu(null);
-                                openCopyModal(song);
+                            <i className="ri-more-2-fill"></i>
+                          </button>
+
+                          {openSongMenu?.songId === song._id ? (
+                            <div
+                              className="playlist-song-menu playlist-song-menu-floating"
+                              style={{
+                                top: `${openSongMenu.top}px`,
+                                left: `${openSongMenu.left}px`,
                               }}
                             >
-                              <i className="ri-upload-2-line"></i>
-                              Upload to playlist
-                            </button>
-                            <button
-                              type="button"
-                              className="playlist-song-menu-item"
-                              onClick={() => {
-                                setOpenSongMenu(null);
-                                handleTemporaryRemove(index);
-                              }}
-                            >
-                              <i className="ri-close-circle-line"></i>
-                              Temporary remove
-                            </button>
-                            <button
-                              type="button"
-                              className="playlist-song-menu-item danger"
-                              onClick={() => {
-                                setOpenSongMenu(null);
-                                handleDeleteSong(song._id);
-                              }}
-                            >
-                              <i className="ri-delete-bin-6-line"></i>
-                              Delete song
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
+                              <button
+                                type="button"
+                                className="playlist-song-menu-item"
+                                onClick={() => {
+                                  setOpenSongMenu(null);
+                                  openCopyModal(song);
+                                }}
+                              >
+                                <i className="ri-upload-2-line"></i>
+                                Upload to playlist
+                              </button>
+                              <button
+                                type="button"
+                                className="playlist-song-menu-item"
+                                onClick={() => {
+                                  setOpenSongMenu(null);
+                                  handleTemporaryRemove(index);
+                                }}
+                              >
+                                <i className="ri-close-circle-line"></i>
+                                Temporary remove
+                              </button>
+                              <button
+                                type="button"
+                                className="playlist-song-menu-item danger"
+                                onClick={() => {
+                                  setOpenSongMenu(null);
+                                  handleDeleteSong(song._id);
+                                }}
+                              >
+                                <i className="ri-delete-bin-6-line"></i>
+                                Delete song
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -747,6 +910,35 @@ const PlaylistPage = ({
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        ) : null}
+
+        {showContributeModal ? (
+          <div className="modal-overlay" onClick={() => setShowContributeModal(false)}>
+            <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+              <h3>Request To Contribute</h3>
+              <p className="copy-song-description">
+                Send a collaboration request to edit <strong>{playlist.name}</strong> together.
+              </p>
+              <label className="copy-target-label">
+                Message (optional)
+                <textarea
+                  className="playlist-contribute-textarea"
+                  value={contributeMessage}
+                  onChange={(event) => setContributeMessage(event.target.value)}
+                  placeholder="Why do you want to help edit this playlist?"
+                  rows={4}
+                />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowContributeModal(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" onClick={handleSubmitContributionRequest}>
+                  Send Request
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
