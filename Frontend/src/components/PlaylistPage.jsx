@@ -20,6 +20,8 @@ import "./PlaylistsPage.css";
 const API = "http://localhost:3000";
 
 const normalizeMood = (mood) => (mood || "unknown").toLowerCase();
+const normalizeUsername = (value) => (value || "").trim().toLowerCase();
+const isDatabaseObjectId = (value) => /^[0-9a-fA-F]{24}$/.test(String(value || ""));
 
 const createRandomOrder = (songs) => {
   const nextSongs = [...songs];
@@ -293,8 +295,23 @@ const PlaylistPage = ({
     playSongs(createRandomOrder(localSongs), 0);
   };
 
-  const handleTemporaryRemove = (index) => {
+  const handleTemporaryRemove = async (index) => {
+    if (!playlist) return;
+
     const removedSong = localSongs[index];
+    const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
+
+    if (canPersistCollaborativeEdit && removedSong?._id) {
+      try {
+        await axios.delete(`${API}/playlists/${playlist._id}/songs/${removedSong._id}`, authConfig);
+        await loadPlaylist();
+      } catch (error) {
+        console.error("Temporary remove error:", error);
+        alert(error?.response?.data?.message || "Failed to remove song");
+      }
+      return;
+    }
+
     const nextSongs = localSongs.filter((_, songIndex) => songIndex !== index);
     let nextIndex = currentIndex;
 
@@ -316,18 +333,23 @@ const PlaylistPage = ({
     if (!playlist) return;
 
     syncPlaylistSongs(nextSongs, nextIndex);
-    recordContribution("reorder", "reordered the songs inside this playlist.");
-
-    if (!authConfig || !isOwner) return;
+    const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
+    if (!canPersistCollaborativeEdit) {
+      recordContribution("reorder", "reordered the songs inside this playlist.");
+      return;
+    }
 
     try {
-      await axios.put(
+      const response = await axios.put(
         `${API}/playlists/${playlist._id}/songs/reorder`,
         {
           songIds: nextSongs.map((song) => song?._id).filter(Boolean),
         },
         authConfig
       );
+      if (response.data?.playlist?.songs) {
+        syncPlaylistSongs(response.data.playlist.songs, nextIndex);
+      }
     } catch (error) {
       console.error("Reorder error:", error);
       await loadPlaylist();
@@ -384,7 +406,8 @@ const PlaylistPage = ({
     const confirmed = window.confirm("Permanently delete this song from this playlist?");
     if (!confirmed) return;
 
-    if (!isOwner || !authConfig) {
+    const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
+    if (!canPersistCollaborativeEdit) {
       const songToDelete = localSongs.find((song) => song._id === songId);
       const nextSongs = localSongs.filter((song) => song._id !== songId);
       syncPlaylistSongs(nextSongs, currentIndex >= nextSongs.length ? 0 : currentIndex);
@@ -420,7 +443,8 @@ const PlaylistPage = ({
     const resolvedArtist = songArtist.trim() || "Unknown";
 
     try {
-      if (!isOwner || !authConfig) {
+      const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
+      if (!canPersistCollaborativeEdit) {
         const existingName = localSongs.some(
           (song) => (song.title || "").trim().toLowerCase() === resolvedTitle.trim().toLowerCase()
         );
@@ -445,7 +469,7 @@ const PlaylistPage = ({
           addedByDisplayName: activeDisplayName || activeUser,
         };
         syncPlaylistSongs([...localSongs, nextSong], currentIndex);
-        recordContribution("add_song", `added "${resolvedTitle}" by ${resolvedArtist}.`);
+        recordContribution("add_song", `added "${resolvedTitle}".`);
       } else {
         const formData = new FormData();
         formData.append("audio", songFile);
@@ -615,14 +639,18 @@ const PlaylistPage = ({
   const activeSong = isActivePlaylist && displayedSongs.length > 0 ? displayedSongs[currentIndex] : null;
   const copyTargets = userPlaylists.filter((item) => item._id !== playlist._id);
   const playlistOwnerUsername = location.state?.ownerUsername || playlist.ownerUsername;
-  const isOwner = playlistOwnerUsername === activeUser;
-  const isCollaborator = isPlaylistCollaborator(playlist._id, activeUser);
+  const normalizedActiveUser = normalizeUsername(activeUser);
+  const isOwner = normalizeUsername(playlistOwnerUsername) === normalizedActiveUser;
+  const collaboratorUsernames = (playlist?.contributors || []).map((username) => normalizeUsername(username));
+  const isCollaborator =
+    collaboratorUsernames.includes(normalizedActiveUser) ||
+    isPlaylistCollaborator(playlist._id, activeUser);
   const collabAccessMap = getCollaborationAccessMap();
   const contributorCount = Array.isArray(playlist?.contributors)
     ? playlist.contributors.length
     : (collabAccessMap[playlist?._id] || []).length;
   const isManagedPlaylist = isOwner && contributorCount > 0;
-  const canContribute = canEditPlaylist({ ...playlist, ownerUsername: playlistOwnerUsername }, activeUser);
+  const canContribute = isOwner || isCollaborator || canEditPlaylist({ ...playlist, ownerUsername: playlistOwnerUsername }, activeUser);
   const shouldShowOwnerLink =
     Boolean(playlistOwnerUsername) &&
     playlistOwnerUsername !== activeUser &&

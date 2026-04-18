@@ -3,6 +3,7 @@ const playlistModel = require("../models/playlist.model");
 const uploadFile = require("./storage.service");
 const {
   createAudioHash,
+  createArtistKey,
   createTitleKey,
   findSongConflict,
   removeSongIfUnused,
@@ -19,35 +20,57 @@ const createSongFromUpload = async ({ file, title, artist, mood, user }) => {
   if (!cleanTitle) {
     return { error: { status: 400, message: "title is required" } };
   }
+  const cleanArtist = String(artist || "").trim() || "Unknown";
 
   const audioHash = createAudioHash(file.buffer);
   const conflict = await findSongConflict({
     title: cleanTitle,
     audioHash,
-    ownerUserId: user._id,
+    artist: cleanArtist,
   });
   if (conflict) {
     return {
       error: {
         status: 409,
-        message: "Song with same name or file already exists",
+        message: "Song already exists in the central database",
         song: conflict,
       },
     };
   }
 
   const fileData = await uploadFile(file, "cohort-audio");
+  const titleKey = createTitleKey(cleanTitle);
+  const artistKey = createArtistKey(cleanArtist);
 
-  const song = await songModel.create({
-    title: cleanTitle,
-    titleKey: createTitleKey(cleanTitle),
-    artist: String(artist || "").trim() || "Unknown",
-    audio: fileData.url,
-    audioHash,
-    mood: normalizeMood(mood),
-    ownerUserId: user._id,
-    ownerUsername: user.username,
-  });
+  let song;
+  try {
+    song = await songModel.create({
+      title: cleanTitle,
+      titleKey,
+      artist: cleanArtist,
+      artistKey,
+      audio: fileData.url,
+      audioHash,
+      mood: normalizeMood(mood),
+      ownerUserId: user._id,
+      ownerUsername: user.username,
+    });
+  } catch (error) {
+    // Handle concurrent insert race when another upload created the same central song first.
+    if (error?.code !== 11000) throw error;
+
+    const existingSong =
+      (await songModel.findOne({ audioHash })) ||
+      (await songModel.findOne({ titleKey, artistKey }));
+
+    return {
+      error: {
+        status: 409,
+        message: "Song already exists in the central database",
+        song: existingSong || null,
+      },
+    };
+  }
 
   return { song };
 };

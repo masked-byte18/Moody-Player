@@ -37,7 +37,17 @@ const userProfileSchema = new mongoose.Schema(
     otpExpiresAt: { type: Date, default: null },
     otpPurpose: { type: String, default: "" },
     lastLoginAt: { type: Date, default: null },
-    googleSub: { type: String, default: "", unique: true, sparse: true },
+    googleSub: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      default: undefined,
+      set: (value) => {
+        const normalized = String(value || "").trim();
+        return normalized || undefined;
+      },
+    },
     following: [{ type: String, lowercase: true, trim: true }],
     savedFeatured: [savedFeaturedSchema],
   },

@@ -9,7 +9,7 @@ const { OAuth2Client } = require("google-auth-library");
 const userProfileModel = require("../models/userProfile.model");
 const playlistModel = require("../models/playlist.model");
 const uploadFile = require("../service/storage.service");
-const { requireAuth, getJwtSecret } = require("../middleware/auth.middleware");
+const { requireAuth, getJwtSecret, AUTH_COOKIE_NAME } = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
@@ -43,6 +43,27 @@ const createToken = (user) =>
     getJwtSecret(),
     { expiresIn: "7d" }
   );
+
+const setAuthCookie = (res, token) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  });
+};
+
+const clearAuthCookie = (res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/",
+  });
+};
 
 const getMailTransportConfig = () => {
   const service = String(process.env.SMTP_SERVICE || "").trim();
@@ -175,6 +196,9 @@ router.post("/auth/signup", async (req, res) => {
           otpExpiresAt,
           otpPurpose: "signup",
         },
+        $unset: {
+          googleSub: 1,
+        },
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
@@ -221,10 +245,12 @@ router.post("/auth/verify-signup", async (req, res) => {
     user.otpPurpose = "";
     user.lastLoginAt = new Date();
     await user.save();
+    const token = createToken(user);
+    setAuthCookie(res, token);
 
     return res.status(200).json({
       message: "Signup verified",
-      token: createToken(user),
+      token,
       user: userResponse(user),
     });
   } catch (error) {
@@ -306,16 +332,23 @@ router.post("/auth/verify-login", async (req, res) => {
     user.otpPurpose = "";
     user.lastLoginAt = new Date();
     await user.save();
+    const token = createToken(user);
+    setAuthCookie(res, token);
 
     return res.status(200).json({
       message: "Login successful",
-      token: createToken(user),
+      token,
       user: userResponse(user),
     });
   } catch (error) {
     console.error("Verify login error:", error);
     return res.status(500).json({ message: "Login verification failed" });
   }
+});
+
+router.post("/auth/logout", (req, res) => {
+  clearAuthCookie(res);
+  return res.status(200).json({ message: "Logged out successfully" });
 });
 
 router.post("/auth/google", async (req, res) => {
@@ -351,10 +384,12 @@ router.post("/auth/google", async (req, res) => {
       user.isEmailVerified = true;
       user.lastLoginAt = new Date();
       await user.save();
+      const token = createToken(user);
+      setAuthCookie(res, token);
 
       return res.status(200).json({
         message: "Google sign-in successful",
-        token: createToken(user),
+        token,
         user: userResponse(user),
       });
     }
@@ -376,10 +411,12 @@ router.post("/auth/google", async (req, res) => {
       googleSub,
       lastLoginAt: new Date(),
     });
+    const token = createToken(user);
+    setAuthCookie(res, token);
 
     return res.status(200).json({
       message: "Google sign-in successful",
-      token: createToken(user),
+      token,
       user: userResponse(user),
     });
   } catch (error) {
@@ -439,10 +476,12 @@ router.put("/auth/profile", requireAuth, imageUpload.single("profilePhoto"), asy
       { ownerUsername: req.user.username },
       { $set: { ownerDisplayName: req.user.displayName } }
     );
+    const token = createToken(req.user);
+    setAuthCookie(res, token);
 
     return res.status(200).json({
       message: "Profile updated",
-      token: createToken(req.user),
+      token,
       user: userResponse(req.user),
     });
   } catch (error) {

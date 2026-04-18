@@ -106,6 +106,8 @@ function LoginPage({ onAuthSuccess }) {
       const response = await axios.post(`${API}/auth/login`, {
         identifier,
         password,
+      }, {
+        withCredentials: true,
       });
       setEmailForOtp(response.data.email || "");
       setOtpStep(true);
@@ -121,6 +123,8 @@ function LoginPage({ onAuthSuccess }) {
       const response = await axios.post(`${API}/auth/verify-login`, {
         email: emailForOtp,
         otp,
+      }, {
+        withCredentials: true,
       });
       onAuthSuccess({
         ...response.data.user,

@@ -368,7 +368,13 @@ function App() {
         />
         <Route
           path="/playlists/:id/activity"
-          element={isAuthenticated ? <PlaylistActivityPage /> : <Navigate to="/login" replace />}
+          element={
+            isAuthenticated ? (
+              <PlaylistActivityPage authToken={userState.token} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
         <Route
           path="/discover"
@@ -392,7 +398,7 @@ function App() {
           path="/notifications"
           element={
             isAuthenticated ? (
-              <NotificationsPage activeUser={userState.username} />
+              <NotificationsPage activeUser={userState.username} authToken={userState.token} />
             ) : (
               <Navigate to="/login" replace />
             )

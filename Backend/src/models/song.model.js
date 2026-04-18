@@ -9,8 +9,12 @@ const songSchema = new mongoose.Schema(
     },
     titleKey: {
       type: String,
-      unique: true,
-      sparse: true,
+      index: true,
+    },
+    artistKey: {
+      type: String,
+      default: "",
+      trim: true,
       index: true,
     },
     artist: {

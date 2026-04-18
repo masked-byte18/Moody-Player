@@ -1,24 +1,27 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
-  ensureDummyCollaborationRequests,
-  getCollaborationAccessMap,
-  getOutgoingRequestsForUser,
-  getCollaborationRequests,
   getPlaylistDraftsMap,
-  removeOutgoingCollaborationRequest,
-  removePlaylistCollaborator,
   savePlaylistDraft,
 } from "../utils/collaborationInbox";
-import { getDummyPlaylistById } from "../data/discoverDummyData";
 import "./PlaylistsPage.css";
 
 const API = "http://localhost:3000";
 
+const getRequestPlaylistId = (request) => {
+  if (typeof request?.playlist === "string") return request.playlist;
+  if (request?.playlist?._id) return String(request.playlist._id);
+  if (request?.playlistId) return String(request.playlistId);
+  return "";
+};
+
 const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
   const navigate = useNavigate();
   const [playlists, setPlaylists] = useState([]);
+  const [managedPlaylists, setManagedPlaylists] = useState([]);
+  const [acceptedCollabPlaylists, setAcceptedCollabPlaylists] = useState([]);
+  const [pendingCollabPlaylists, setPendingCollabPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -30,35 +33,111 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
 
-  const authConfig = authToken
-    ? {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      }
-    : null;
+  const authConfig = useMemo(
+    () =>
+      authToken
+        ? {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          }
+        : null,
+    [authToken]
+  );
 
   const loadPlaylists = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
-      ensureDummyCollaborationRequests(activeUser);
-      const response = await axios.get(`${API}/playlists`, {
-        params: { username: activeUser, scope: "owned" },
-      });
-      setPlaylists(response.data.playlists || []);
+      if (!authConfig || !activeUser || activeUser === "guest") {
+        setPlaylists([]);
+        setManagedPlaylists([]);
+        setAcceptedCollabPlaylists([]);
+        setPendingCollabPlaylists([]);
+        return;
+      }
+
+      const [ownedResponse, managedResponse, collabResponse, outgoingResponse] = await Promise.all([
+        axios.get(`${API}/playlists`, {
+          params: { username: activeUser, scope: "owned" },
+          ...authConfig,
+        }),
+        axios.get(`${API}/playlists/managed`, authConfig),
+        axios.get(`${API}/playlists/collab`, authConfig),
+        axios.get(`${API}/collab/requests/outgoing`, authConfig),
+      ]);
+
+      const owned = ownedResponse.data.playlists || [];
+      const managed = managedResponse.data.playlists || [];
+      const accepted = collabResponse.data.playlists || [];
+      const outgoingRequests = outgoingResponse.data.requests || [];
+
+      const acceptedIds = new Set(accepted.map((playlist) => String(playlist._id)));
+      const pendingRequests = outgoingRequests.filter(
+        (request) => request.status === "pending" && !acceptedIds.has(getRequestPlaylistId(request))
+      );
+
+      const pendingPlaylists = await Promise.all(
+        pendingRequests.map(async (request) => {
+          const playlistId = getRequestPlaylistId(request);
+          let playlistData = null;
+
+          if (playlistId) {
+            try {
+              const playlistResponse = await axios.get(`${API}/playlists/${playlistId}`, authConfig);
+              playlistData = playlistResponse.data?.playlist || null;
+            } catch {
+              playlistData = null;
+            }
+          }
+
+          return {
+            _id: playlistId || request._id,
+            requestId: request._id || request.id,
+            name: playlistData?.name || request.playlistName || "Requested Playlist",
+            description:
+              playlistData?.description ||
+              "Waiting for the owner to accept your contribution request.",
+            coverImage: playlistData?.coverImage || "",
+            ownerUsername: playlistData?.ownerUsername || request.ownerUsername || "",
+            ownerDisplayName: playlistData?.ownerDisplayName || request.ownerDisplayName || "",
+            isFeatured: Boolean(playlistData?.isFeatured),
+            songs: playlistData?.songs || [],
+            isCollabView: true,
+            collabStatus: "pending",
+          };
+        })
+      );
+
+      setPlaylists(owned);
+      setManagedPlaylists(managed);
+      setAcceptedCollabPlaylists(accepted.map((playlist) => ({ ...playlist, isCollabView: true })));
+      setPendingCollabPlaylists(pendingPlaylists);
     } catch (error) {
       console.error("Failed to load playlists:", error);
       setPlaylists([]);
+      setManagedPlaylists([]);
+      setAcceptedCollabPlaylists([]);
+      setPendingCollabPlaylists([]);
       setLoadError("We couldn't load your playlists right now.");
     } finally {
       setLoading(false);
     }
-  }, [activeUser]);
+  }, [activeUser, authConfig]);
 
   useEffect(() => {
     loadPlaylists();
   }, [loadPlaylists]);
+
+  useEffect(() => {
+    if (!authConfig || !activeUser || activeUser === "guest") return undefined;
+
+    const intervalId = window.setInterval(() => {
+      loadPlaylists();
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeUser, authConfig, loadPlaylists]);
 
   const handleCreatePlaylist = async (event) => {
     event.preventDefault();
@@ -109,6 +188,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     try {
       await axios.delete(`${API}/playlists/${playlistId}`, authConfig);
       setPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
+      setManagedPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
     } catch (error) {
       console.error("Delete playlist error:", error);
       alert(error?.response?.data?.message || "Failed to delete playlist");
@@ -131,6 +211,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       setPlaylists((current) =>
         current.map((item) => (item._id === playlist._id ? response.data.playlist : item))
       );
+      await loadPlaylists();
     } catch (error) {
       console.error("Publish playlist error:", error);
       alert(error?.response?.data?.message || "Failed to update publish status");
@@ -163,76 +244,57 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     setRenameValue("");
   };
 
-  const handleQuitCollab = (event, playlist) => {
+  const handleQuitCollab = (event) => {
     event.stopPropagation();
-    removePlaylistCollaborator(playlist._id, activeUser);
+    alert("Quit collaboration from UI is currently owner-managed. Ask owner to remove contributor.");
   };
 
-  const handleRemovePendingCollab = (event, playlist) => {
+  const handleRemovePendingCollab = async (event, playlist) => {
     event.stopPropagation();
-    removeOutgoingCollaborationRequest(playlist._id, activeUser);
+    if (!authConfig || !playlist?.requestId) return;
+
+    const confirmed = window.confirm("Withdraw this pending contribution request?");
+    if (!confirmed) return;
+
+    try {
+      await axios.delete(`${API}/collab/requests/${playlist.requestId}/cancel`, authConfig);
+      await loadPlaylists();
+    } catch (error) {
+      console.error("Pending request withdraw error:", error);
+      alert(error?.response?.data?.message || "Failed to withdraw request.");
+    }
   };
 
-  const accessMap = getCollaborationAccessMap();
-  const requests = getCollaborationRequests();
-  const outgoingRequests = getOutgoingRequestsForUser(activeUser);
   const drafts = getPlaylistDraftsMap();
 
   const demoOwnedDrafts = Object.values(drafts).filter(
     (draft) => draft.ownerUsername === activeUser && !playlists.some((playlist) => playlist._id === draft._id)
   );
   const ownedPlaylists = [...demoOwnedDrafts, ...playlists];
-  const managedPlaylists = ownedPlaylists.filter((playlist) => (accessMap[playlist._id] || []).length > 0);
-  const acceptedCollabPlaylists = Object.entries(accessMap)
-    .filter(([, usernames]) => usernames.includes(activeUser))
-    .map(([playlistId]) => {
-      const ownedMatch = ownedPlaylists.find((playlist) => playlist._id === playlistId);
-      if (ownedMatch && ownedMatch.ownerUsername !== activeUser) return ownedMatch;
-      if (ownedMatch && ownedMatch.ownerUsername === activeUser) return null;
-
-      const requestMatch = requests.find((request) => request.playlistId === playlistId && request.status === "accepted");
-      const dummyMatch = getDummyPlaylistById(playlistId);
-      const draft = drafts[playlistId] || {};
-      const source = dummyMatch || requestMatch || {};
-      if (!source || (source.ownerUsername || "") === activeUser) return null;
-
-      return {
-        _id: playlistId,
-        name: draft.name || source.name || source.playlistName || "Shared Playlist",
-        description: draft.description || source.description || "Playlist you're contributing to.",
-        coverImage: draft.coverImage || source.coverImage || "",
-        ownerUsername: source.ownerUsername || "",
-        ownerDisplayName: source.ownerDisplayName || source.ownerUsername || "",
-        isFeatured: Boolean(source.isFeatured),
-        songs: draft.songs || source.songs || [],
-        isCollabView: true,
-      };
-    })
-    .filter(Boolean);
-  const pendingCollabPlaylists = outgoingRequests
-    .filter((request) => request.status === "pending")
-    .map((request) => {
-      const dummyMatch = getDummyPlaylistById(request.playlistId);
-      const draft = drafts[request.playlistId] || {};
-      return {
-        _id: request.playlistId,
-        name: draft.name || request.playlistName || dummyMatch?.name || "Requested Playlist",
-        description: draft.description || dummyMatch?.description || "Waiting for the owner to accept your contribution request.",
-        coverImage: draft.coverImage || dummyMatch?.coverImage || "",
-        ownerUsername: request.ownerUsername || dummyMatch?.ownerUsername || "",
-        ownerDisplayName: request.ownerDisplayName || dummyMatch?.ownerDisplayName || "",
-        isFeatured: Boolean(dummyMatch?.isFeatured),
-        songs: draft.songs || dummyMatch?.songs || [],
-        isCollabView: true,
-        collabStatus: "pending",
-      };
-    });
   const collabPlaylists = [...acceptedCollabPlaylists, ...pendingCollabPlaylists].filter(
     (playlist, index, array) => array.findIndex((item) => item._id === playlist._id) === index
   );
 
+  const managedWithDrafts = managedPlaylists.map((playlist) => {
+    const draft = drafts[playlist._id] || {};
+    return {
+      ...playlist,
+      ...draft,
+      songs: draft.songs || playlist.songs || [],
+    };
+  });
+
+  const collabWithDrafts = collabPlaylists.map((playlist) => {
+    const draft = drafts[playlist._id] || {};
+    return {
+      ...playlist,
+      ...draft,
+      songs: draft.songs || playlist.songs || [],
+    };
+  });
+
   const visiblePlaylists =
-    activeView === "collab" ? collabPlaylists : activeView === "managed" ? managedPlaylists : ownedPlaylists;
+    activeView === "collab" ? collabWithDrafts : activeView === "managed" ? managedWithDrafts : ownedPlaylists;
 
   return (
     <div className="page-shell">
@@ -283,7 +345,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
             <div
               className="playlist-card"
               key={playlist._id}
-              onClick={() =>
+              onClick={() => {
+                if (playlist.collabStatus === "pending") return;
                 navigate(`/playlists/${playlist._id}`, {
                   state: playlist.isCollabView
                     ? {
@@ -293,8 +356,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                         playlistData: playlist,
                       }
                     : undefined,
-                })
-              }
+                });
+              }}
             >
               <div className="playlist-cover">
                 {playlist.coverImage ? (
@@ -312,10 +375,19 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                     {activeView === "collab" ? (
                       <span className="featured-chip">@{playlist.ownerUsername}</span>
                     ) : null}
-                    {playlist.collabStatus === "pending" ? <span className="featured-chip">Requested</span> : null}
+                    {playlist.collabStatus === "pending" ? (
+                      <button
+                        type="button"
+                        className="featured-chip featured-chip-pending-button"
+                        onClick={(event) => handleRemovePendingCollab(event, playlist)}
+                        title="Click to withdraw this pending request"
+                      >
+                        Pending
+                      </button>
+                    ) : null}
                     {playlist.isFeatured ? <span className="featured-chip">Published</span> : null}
                     {activeView === "managed" ? (
-                      <span className="featured-chip">{(accessMap[playlist._id] || []).length} contributors</span>
+                      <span className="featured-chip">{(playlist.contributors || []).length} contributors</span>
                     ) : null}
                   </div>
                 </div>
@@ -406,15 +478,9 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                         <i className="ri-pencil-line"></i>
                       </button>
                       {playlist.collabStatus === "pending" ? (
-                        <button
-                          type="button"
-                          className="queue-action delete"
-                          onClick={(event) => handleRemovePendingCollab(event, playlist)}
-                          aria-label="Remove request"
-                          title="Remove request"
-                        >
-                          <i className="ri-close-circle-line"></i>
-                        </button>
+                        <span className="queue-action" title="Pending request is shown in badge">
+                          <i className="ri-time-line"></i>
+                        </span>
                       ) : (
                         <button
                           type="button"

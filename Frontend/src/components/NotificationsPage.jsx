@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ensureDummyCollaborationRequests,
   getCollaborationAccessMap,
-  getContributionActivity,
   getCollaborationRequests,
+  getContributionActivity,
   getInboxRequestsForUser,
-  removePlaylistCollaborator,
-  respondToCollaborationRequest,
 } from "../utils/collaborationInbox";
 import { getDummyFriendNotifications, getDummyFriendsList } from "../utils/notificationSamples";
 import "./NotificationsPage.css";
+
+const API = "http://localhost:3000";
 
 const formatRelativeTime = (value) => {
   const diffMinutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60000));
@@ -19,7 +20,111 @@ const formatRelativeTime = (value) => {
   return `${Math.round(diffMinutes / 1440)} day ago`;
 };
 
-function NotificationsPage({ activeUser }) {
+const stripByNotation = (value = "") => value.replace(/\s+by\s+[^.]+\.?$/i, ".").trim();
+
+const getContributionNotation = (type) => {
+  if (type === "add_song") return { chipClass: "is-accepted", label: "Added" };
+  if (type === "delete_song" || type === "remove_song") return { chipClass: "is-rejected", label: "Deleted" };
+  if (type === "reorder") return { chipClass: "is-update", label: "Reordered" };
+  if (type === "request_message") return { chipClass: "is-message", label: "Message" };
+  return { chipClass: "is-update", label: "Updated" };
+};
+
+const DUMMY_CONTRIBUTION_NOTATION = [
+  {
+    id: "dummy-notation-add",
+    type: "add_song",
+    icon: "ri-play-list-add-line",
+    title: "Dummy Example",
+    copy: 'added "Neon Lights".',
+  },
+  {
+    id: "dummy-notation-delete",
+    type: "delete_song",
+    icon: "ri-delete-bin-6-line",
+    title: "Dummy Example",
+    copy: 'deleted "Late Window" from the playlist.',
+  },
+  {
+    id: "dummy-notation-reorder",
+    type: "reorder",
+    icon: "ri-drag-move-2-line",
+    title: "Dummy Example",
+    copy: "reordered tracks to improve transition flow.",
+  },
+  {
+    id: "dummy-notation-message",
+    type: "request_message",
+    icon: "ri-message-2-line",
+    title: "Dummy Request Message",
+    copy: "Can I help refine the first half mood arc?",
+  },
+];
+
+const normalizeRequest = (request) => {
+  const rawPlaylistId =
+    typeof request?.playlist === "string"
+      ? request.playlist
+      : request?.playlist?._id || request?.playlistId || "";
+
+  return {
+    ...request,
+    id: request?._id || request?.id || "",
+    playlistId: String(rawPlaylistId || ""),
+  };
+};
+
+const normalizeActivityEntry = (entry) => {
+  const rawPlaylistId =
+    typeof entry?.playlist === "string"
+      ? entry.playlist
+      : entry?.playlist?._id || entry?.playlistId || "";
+
+  return {
+    ...entry,
+    id: entry?._id || entry?.id || "",
+    playlistId: String(rawPlaylistId || ""),
+  };
+};
+
+const buildDemoContributorSnapshot = (activeUser, playlistFilterId = "") => {
+  ensureDummyCollaborationRequests(activeUser);
+
+  const demoRequests = getInboxRequestsForUser(activeUser).map(normalizeRequest);
+  const allRequests = getCollaborationRequests().map(normalizeRequest);
+  const accessMap = getCollaborationAccessMap();
+  const playlistIds = Object.keys(accessMap).filter(
+    (playlistId) => !playlistFilterId || String(playlistId) === String(playlistFilterId)
+  );
+
+  const contributors = playlistIds.flatMap((playlistId) =>
+    (accessMap[playlistId] || []).map((username) => {
+      const matchingRequest = allRequests.find(
+        (request) =>
+          request.playlistId === String(playlistId) &&
+          (request.requesterUsername || "").toLowerCase() === String(username).toLowerCase()
+      );
+      return {
+        id: `${playlistId}-${username}`,
+        playlistId: String(playlistId),
+        playlistName: matchingRequest?.playlistName || "Shared Playlist",
+        username,
+        displayName: matchingRequest?.requesterDisplayName || username,
+      };
+    })
+  );
+
+  const activityMap = Object.fromEntries(
+    playlistIds.map((playlistId) => [
+      String(playlistId),
+      (getContributionActivity(playlistId) || []).map(normalizeActivityEntry),
+    ])
+  );
+
+  return { requests: demoRequests, contributors, activityMap };
+};
+
+function NotificationsPage({ activeUser, authToken }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || "friends");
@@ -32,39 +137,88 @@ function NotificationsPage({ activeUser }) {
   const [manualMessage, setManualMessage] = useState("");
   const [sentMessages, setSentMessages] = useState({});
   const [contributionTarget, setContributionTarget] = useState(null);
+  const [activityMap, setActivityMap] = useState({});
 
-  const isLoggedIn = Boolean(activeUser && activeUser !== "guest");
+  const isLoggedIn = Boolean(activeUser && activeUser !== "guest" && authToken);
+  const authHeaders = useMemo(
+    () => (authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    [authToken]
+  );
+  const playlistFilterId = location.state?.playlistId || "";
+  const playlistFilterName = location.state?.playlistName || "";
 
-  const reloadRequests = useCallback(() => {
+  const reloadRequests = useCallback(async () => {
+    setFriendList(getDummyFriendsList(activeUser));
+
     if (!isLoggedIn) {
       setRequests([]);
-      setFriendList([]);
       setContributors([]);
+      setActivityMap({});
       return;
     }
 
-    ensureDummyCollaborationRequests(activeUser);
-    setRequests(getInboxRequestsForUser(activeUser));
-    setFriendList(getDummyFriendsList(activeUser));
+    try {
+      const [requestsResponse, managedResponse] = await Promise.all([
+        axios.get(`${API}/collab/requests/inbox`, { headers: authHeaders }),
+        axios.get(`${API}/playlists/managed`, { headers: authHeaders }),
+      ]);
 
-    const accessMap = getCollaborationAccessMap();
-    const allRequests = getCollaborationRequests();
-    const nextContributors = Object.entries(accessMap).flatMap(([playlistId, usernames]) =>
-      usernames.map((username) => {
-        const matchingRequest = allRequests.find(
-          (request) => request.playlistId === playlistId && request.requesterUsername === username
-        );
-        return {
-          id: `${playlistId}-${username}`,
-          playlistId,
-          playlistName: matchingRequest?.playlistName || "Shared Playlist",
-          username,
-          displayName: matchingRequest?.requesterDisplayName || username,
-        };
-      })
-    );
-    setContributors(nextContributors);
-  }, [activeUser, isLoggedIn]);
+      const normalizedRequests = (requestsResponse.data?.requests || []).map(normalizeRequest);
+      setRequests(normalizedRequests);
+
+      const managedPlaylists = managedResponse.data?.playlists || [];
+      const filteredPlaylists = playlistFilterId
+        ? managedPlaylists.filter((playlist) => String(playlist._id) === String(playlistFilterId))
+        : managedPlaylists;
+
+      const nextContributors = filteredPlaylists.flatMap((playlist) =>
+        (playlist.contributors || []).map((username) => {
+          const matchingRequest = normalizedRequests.find(
+            (request) =>
+              request.playlistId === String(playlist._id) &&
+              (request.requesterUsername || "").toLowerCase() === String(username).toLowerCase()
+          );
+          return {
+            id: `${playlist._id}-${username}`,
+            playlistId: String(playlist._id),
+            playlistName: playlist.name || matchingRequest?.playlistName || "Shared Playlist",
+            username,
+            displayName: matchingRequest?.requesterDisplayName || username,
+          };
+        })
+      );
+      const activityResponses = await Promise.all(
+        filteredPlaylists.map(async (playlist) => {
+          const response = await axios.get(`${API}/playlists/${playlist._id}/activity`, {
+            headers: authHeaders,
+          });
+          const activities = (response.data?.activities || []).map(normalizeActivityEntry);
+          return [String(playlist._id), activities];
+        })
+      );
+      const nextActivityMap = Object.fromEntries(activityResponses);
+      const nextActivityCount = Object.values(nextActivityMap).flatMap((entries) => entries || []).length;
+
+      const shouldUseDemoFallback = nextContributors.length === 0 || nextActivityCount === 0;
+      if (shouldUseDemoFallback) {
+        const demoSnapshot = buildDemoContributorSnapshot(activeUser, playlistFilterId);
+
+        setRequests((current) => (current.length ? current : demoSnapshot.requests));
+        setContributors(nextContributors.length ? nextContributors : demoSnapshot.contributors);
+        setActivityMap(nextActivityCount > 0 ? nextActivityMap : demoSnapshot.activityMap);
+        return;
+      }
+
+      setContributors(nextContributors);
+      setActivityMap(nextActivityMap);
+    } catch (error) {
+      console.error("Failed to load contributor notifications:", error);
+      const demoSnapshot = buildDemoContributorSnapshot(activeUser, playlistFilterId);
+      setRequests(demoSnapshot.requests);
+      setContributors(demoSnapshot.contributors);
+      setActivityMap(demoSnapshot.activityMap);
+    }
+  }, [activeUser, authHeaders, isLoggedIn, playlistFilterId]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -74,10 +228,14 @@ function NotificationsPage({ activeUser }) {
   }, [reloadRequests]);
 
   useEffect(() => {
-    const handleUpdate = () => reloadRequests();
-    window.addEventListener("moody-collaboration-updated", handleUpdate);
-    return () => window.removeEventListener("moody-collaboration-updated", handleUpdate);
-  }, [reloadRequests]);
+    if (!isLoggedIn || activeTab !== "contributors") return undefined;
+
+    const intervalId = window.setInterval(() => {
+      reloadRequests();
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, isLoggedIn, reloadRequests]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -97,15 +255,13 @@ function NotificationsPage({ activeUser }) {
     () => requests.filter((request) => request.status === "pending"),
     [requests]
   );
-  const playlistFilterId = location.state?.playlistId || "";
-  const playlistFilterName = location.state?.playlistName || "";
   const playlistActivityFeed = useMemo(() => {
     const source = playlistFilterId
-      ? getContributionActivity(playlistFilterId)
-      : contributors.flatMap((contributor) => getContributionActivity(contributor.playlistId));
+      ? activityMap[playlistFilterId] || []
+      : Object.values(activityMap).flatMap((entries) => entries || []);
 
     return [...source].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
-  }, [contributors, playlistFilterId]);
+  }, [activityMap, playlistFilterId]);
   const playlistActivityGroups = useMemo(() => {
     const grouped = new Map();
     playlistActivityFeed.forEach((entry) => {
@@ -132,9 +288,20 @@ function NotificationsPage({ activeUser }) {
     return [...grouped.values()].sort((left, right) => new Date(right.latestAt) - new Date(left.latestAt));
   }, [playlistActivityFeed]);
 
-  const handleRequestAction = (requestId, status) => {
-    respondToCollaborationRequest(requestId, status);
-    reloadRequests();
+  const handleRequestAction = async (requestId, status) => {
+    if (!requestId || !status) return;
+
+    try {
+      await axios.post(
+        `${API}/collab/requests/${requestId}/respond`,
+        { status },
+        { headers: authHeaders }
+      );
+      await reloadRequests();
+    } catch (error) {
+      console.error("Failed to respond to request:", error);
+      alert(error?.response?.data?.message || "Failed to update request status.");
+    }
   };
 
   const handleFriendAction = (notificationId, status) => {
@@ -148,9 +315,18 @@ function NotificationsPage({ activeUser }) {
     setFriendList((current) => current.filter((friend) => friend.id !== friendId));
   };
 
-  const handleRemoveContributor = (contributor) => {
-    removePlaylistCollaborator(contributor.playlistId, contributor.username);
-    reloadRequests();
+  const handleRemoveContributor = async (contributor) => {
+    if (!contributor?.playlistId || !contributor?.username) return;
+
+    try {
+      await axios.delete(`${API}/playlists/${contributor.playlistId}/contributors/${contributor.username}`, {
+        headers: authHeaders,
+      });
+      await reloadRequests();
+    } catch (error) {
+      console.error("Failed to remove contributor:", error);
+      alert(error?.response?.data?.message || "Failed to remove contributor.");
+    }
   };
 
   const handleSendManualMessage = () => {
@@ -176,7 +352,7 @@ function NotificationsPage({ activeUser }) {
         request.playlistId === contributor.playlistId &&
         request.requesterUsername === contributor.username
     );
-    const activity = getContributionActivity(contributor.playlistId).filter(
+    const activity = (activityMap[contributor.playlistId] || []).filter(
       (entry) => entry.actorUsername === contributor.username
     );
 
@@ -185,6 +361,7 @@ function NotificationsPage({ activeUser }) {
     if (matchingRequest?.message) {
       entries.push({
         id: `${contributor.id}-message`,
+        type: "request_message",
         icon: "ri-message-2-line",
         title: "Request message",
         copy: matchingRequest.message,
@@ -194,6 +371,7 @@ function NotificationsPage({ activeUser }) {
     activity.forEach((entry) => {
       entries.push({
         id: entry.id,
+        type: entry.type,
         icon:
           entry.type === "add_song"
             ? "ri-play-list-add-line"
@@ -212,6 +390,7 @@ function NotificationsPage({ activeUser }) {
     if (!entries.length) {
       entries.push({
         id: `${contributor.id}-joined`,
+        type: "update",
         icon: "ri-user-shared-line",
         title: "Collaboration enabled",
         copy: `${contributor.displayName} can now edit this playlist together.`,
@@ -597,23 +776,49 @@ function NotificationsPage({ activeUser }) {
 
         {contributionTarget ? (
           <div className="profile-modal-backdrop" onClick={() => setContributionTarget(null)}>
-            <div className="profile-modal notification-message-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="profile-modal notification-message-modal contribution-modal-fixed" onClick={(event) => event.stopPropagation()}>
               <h3>Playlist Contributions</h3>
               <p className="copy-song-description">
                 Changes and context shared by <strong>{contributionTarget.displayName}</strong>.
               </p>
-              <div className="contribution-log-list">
-                {getContributionEntries(contributionTarget).map((entry) => (
-                  <article key={entry.id} className="contribution-log-item">
-                    <span className="contribution-log-icon">
-                      <i className={entry.icon}></i>
-                    </span>
-                    <div className="contribution-log-copy">
-                      <strong>{entry.title}</strong>
-                      <p>{entry.copy}</p>
-                    </div>
-                  </article>
-                ))}
+              <div className="contribution-modal-scroll-area">
+                <div className="contribution-log-list">
+                  {getContributionEntries(contributionTarget).map((entry) => (
+                    <article key={entry.id} className={`contribution-log-item contribution-log-${entry.type || "update"}`}>
+                      <span className="contribution-log-icon">
+                        <i className={entry.icon}></i>
+                      </span>
+                      <div className="contribution-log-copy">
+                        <div className="contribution-log-title-row">
+                          <strong>{entry.title}</strong>
+                          <span className={`notification-type ${getContributionNotation(entry.type).chipClass}`}>
+                            {getContributionNotation(entry.type).label}
+                          </span>
+                        </div>
+                        <p>{stripByNotation(entry.copy)}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <p className="contribution-log-legend-title">Dummy notation preview</p>
+                <div className="contribution-log-list">
+                  {DUMMY_CONTRIBUTION_NOTATION.map((entry) => (
+                    <article key={entry.id} className={`contribution-log-item contribution-log-${entry.type}`}>
+                      <span className="contribution-log-icon">
+                        <i className={entry.icon}></i>
+                      </span>
+                      <div className="contribution-log-copy">
+                        <div className="contribution-log-title-row">
+                          <strong>{entry.title}</strong>
+                          <span className={`notification-type ${getContributionNotation(entry.type).chipClass}`}>
+                            {getContributionNotation(entry.type).label}
+                          </span>
+                        </div>
+                        <p>{stripByNotation(entry.copy)}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-primary" onClick={() => setContributionTarget(null)}>

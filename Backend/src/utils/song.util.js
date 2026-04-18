@@ -3,30 +3,25 @@ const playlistModel = require("../models/playlist.model");
 const songModel = require("../models/song.model");
 
 const createTitleKey = (title = "") => String(title).trim().toLowerCase().replace(/\s+/g, " ");
+const createArtistKey = (artist = "") => String(artist).trim().toLowerCase().replace(/\s+/g, " ");
 
 const createAudioHash = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
 
-const findSongConflict = async ({ title, audioHash, ownerUserId }) => {
-  const conditions = [];
-
-  if (title) {
-    conditions.push({ titleKey: createTitleKey(title) });
-  }
-
+const findSongConflict = async ({ title, audioHash, artist }) => {
+  // Global central DB match by exact audio first (most reliable dedupe key).
   if (audioHash) {
-    conditions.push({ audioHash });
+    const byHash = await songModel.findOne({ audioHash });
+    if (byHash) return byHash;
   }
 
-  if (!conditions.length) {
-    return null;
+  // Fallback: same normalized title + artist pair.
+  const titleKey = createTitleKey(title);
+  const artistKey = createArtistKey(artist);
+  if (titleKey && artistKey) {
+    return songModel.findOne({ titleKey, artistKey });
   }
 
-  const filter = { $or: conditions };
-  if (ownerUserId) {
-    filter.ownerUserId = ownerUserId;
-  }
-
-  return songModel.findOne(filter);
+  return null;
 };
 
 const removeSongIfUnused = async (songId) => {
@@ -38,6 +33,7 @@ const removeSongIfUnused = async (songId) => {
 
 module.exports = {
   createTitleKey,
+  createArtistKey,
   createAudioHash,
   findSongConflict,
   removeSongIfUnused,

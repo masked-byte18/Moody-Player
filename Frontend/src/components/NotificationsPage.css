@@ -212,6 +212,12 @@
   background: rgba(248, 113, 113, 0.08);
 }
 
+.notification-type.is-message {
+  color: #d1d5db;
+  border-color: rgba(156, 163, 175, 0.36);
+  background: rgba(156, 163, 175, 0.12);
+}
+
 .notification-message-box {
   margin-top: 0.35rem;
   padding: 0.7rem 0.82rem;
@@ -268,6 +274,27 @@
   gap: 0.75rem;
 }
 
+.contribution-modal-fixed {
+  width: min(760px, 92vw);
+  max-height: min(82vh, 760px);
+  overflow: hidden;
+}
+
+.contribution-modal-scroll-area {
+  flex: 1;
+  min-height: 240px;
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.contribution-modal-scroll-area::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .contribution-log-item {
   display: flex;
   align-items: flex-start;
@@ -276,6 +303,27 @@
   border-radius: 18px;
   border: 1px solid var(--border-default);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.contribution-log-item.contribution-log-add_song {
+  background: linear-gradient(180deg, rgba(20, 52, 34, 0.94), rgba(16, 34, 24, 0.92));
+  border-color: rgba(34, 197, 94, 0.24);
+}
+
+.contribution-log-item.contribution-log-delete_song,
+.contribution-log-item.contribution-log-remove_song {
+  background: linear-gradient(180deg, rgba(60, 24, 24, 0.94), rgba(38, 16, 16, 0.92));
+  border-color: rgba(248, 113, 113, 0.24);
+}
+
+.contribution-log-item.contribution-log-reorder {
+  background: linear-gradient(180deg, rgba(31, 37, 52, 0.94), rgba(20, 24, 35, 0.92));
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+.contribution-log-item.contribution-log-request_message {
+  background: linear-gradient(180deg, rgba(42, 45, 51, 0.94), rgba(28, 30, 36, 0.92));
+  border-color: rgba(156, 163, 175, 0.28);
 }
 
 .contribution-log-icon {
@@ -296,10 +344,30 @@
   gap: 0.16rem;
 }
 
+.contribution-log-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 .contribution-log-copy p {
   margin: 0;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.contribution-log-item.contribution-log-request_message .contribution-log-copy p {
+  color: #d1d5db;
+}
+
+.contribution-log-legend-title {
+  margin: 0.35rem 0 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 
@@ -460,6 +528,17 @@
   .notification-management-header {
     flex-direction: column;
     gap: 0.55rem;
+  }
+
+  .contribution-modal-fixed {
+    width: min(96vw, 620px);
+    max-height: 90vh;
+    padding: 1rem;
+  }
+
+  .contribution-modal-scroll-area {
+    min-height: 200px;
+    max-height: 64vh;
   }
 
   .notification-actions-inline {

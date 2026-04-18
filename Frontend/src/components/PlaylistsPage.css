@@ -871,6 +871,11 @@
   text-transform: uppercase;
 }
 
+.featured-chip-pending-button {
+  cursor: pointer;
+  background: rgba(245, 87, 108, 0.12);
+}
+
 .compact-btn {
   padding: 0.45rem 0.8rem;
   font-size: 0.85rem;

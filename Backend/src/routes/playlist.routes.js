@@ -9,6 +9,7 @@ const playlistActivityModel = require("../models/playlistActivity.model");
 const { requireAuth } = require("../middleware/auth.middleware");
 const {
   createAudioHash,
+  createArtistKey,
   createTitleKey,
   findSongConflict,
   removeSongIfUnused,
@@ -61,7 +62,8 @@ const isPlaylistContributor = (playlist, username) =>
   (playlist?.contributors || []).includes(normalizeUsername(username || ""));
 
 const canEditPlaylist = (playlist, username) =>
-  isPlaylistOwner(playlist, username) || isPlaylistContributor(playlist, username);
+  isPlaylistOwner(playlist, username) ||
+  (Boolean(playlist?.isFeatured) && isPlaylistContributor(playlist, username));
 
 const logPlaylistActivity = async ({ playlist, actor, type, text }) => {
   if (!playlist?._id || !actor?.username || !text) return;
@@ -191,7 +193,7 @@ router.get("/playlists/mine", requireAuth, async (req, res) => {
 router.get("/playlists/collab", requireAuth, async (req, res) => {
   try {
     const playlists = await playlistModel
-      .find({ contributors: req.user.username })
+      .find({ contributors: req.user.username, isFeatured: true })
       .populate("songs")
       .sort({ updatedAt: -1 });
 
@@ -205,7 +207,7 @@ router.get("/playlists/collab", requireAuth, async (req, res) => {
 router.get("/playlists/managed", requireAuth, async (req, res) => {
   try {
     const playlists = await playlistModel
-      .find({ ownerUsername: req.user.username, "contributors.0": { $exists: true } })
+      .find({ ownerUsername: req.user.username, isFeatured: true, "contributors.0": { $exists: true } })
       .populate("songs")
       .sort({ updatedAt: -1 });
 
@@ -283,6 +285,10 @@ router.post("/playlists/:id/collab/request", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
+    if (!playlist.isFeatured) {
+      return res.status(403).json({ message: "Collaboration is allowed only for featured playlists" });
+    }
+
     if (isPlaylistOwner(playlist, req.user.username)) {
       return res.status(400).json({ message: "Owner cannot request collaboration" });
     }
@@ -344,6 +350,29 @@ router.get("/collab/requests/outgoing", requireAuth, async (req, res) => {
   }
 });
 
+router.delete("/collab/requests/:requestId/cancel", requireAuth, async (req, res) => {
+  try {
+    const request = await collaborationRequestModel.findById(req.params.requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (request.requesterUsername !== req.user.username) {
+      return res.status(403).json({ message: "Only requester can cancel this request" });
+    }
+
+    if (request.status !== "pending") {
+      return res.status(409).json({ message: "Only pending requests can be cancelled" });
+    }
+
+    await collaborationRequestModel.deleteOne({ _id: request._id });
+    return res.status(200).json({ message: "Request withdrawn" });
+  } catch (error) {
+    console.error("Collab request cancel error:", error);
+    return res.status(500).json({ message: "Failed to cancel collaboration request" });
+  }
+});
+
 router.post("/collab/requests/:requestId/respond", requireAuth, async (req, res) => {
   try {
     const status = String(req.body?.status || "").trim().toLowerCase();
@@ -362,14 +391,21 @@ router.post("/collab/requests/:requestId/respond", requireAuth, async (req, res)
 
     request.status = status;
     request.respondedAt = new Date();
-    await request.save();
-
     if (status === "accepted") {
       const playlist = await playlistModel.findById(request.playlist);
-      if (playlist && !playlist.contributors.includes(request.requesterUsername)) {
+      if (!playlist) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      if (!playlist.isFeatured) {
+        return res.status(409).json({ message: "Cannot accept request for an unfeatured playlist" });
+      }
+      await request.save();
+      if (!playlist.contributors.includes(request.requesterUsername)) {
         playlist.contributors.push(request.requesterUsername);
         await playlist.save();
       }
+    } else {
+      await request.save();
     }
 
     return res.status(200).json({ message: `Request ${status}`, request });
@@ -519,6 +555,20 @@ router.put("/playlists/:id/publish", requireAuth, async (req, res) => {
     const nextFeatured = Boolean(req.body?.isFeatured);
     playlist.isFeatured = nextFeatured;
     playlist.featuredAt = nextFeatured ? new Date() : null;
+
+    if (!nextFeatured) {
+      const removedContributors = playlist.contributors || [];
+      playlist.contributors = [];
+      await collaborationRequestModel.updateMany(
+        {
+          playlist: playlist._id,
+          status: { $in: ["pending", "accepted"] },
+          requesterUsername: { $in: removedContributors },
+        },
+        { $set: { status: "rejected", respondedAt: new Date() } }
+      );
+    }
+
     await playlist.save();
 
     res.status(200).json({ message: nextFeatured ? "Playlist published" : "Playlist unpublished", playlist });
@@ -551,12 +601,13 @@ router.post(
       if (!cleanTitle) {
         return res.status(400).json({ message: "title is required" });
       }
+      const cleanArtist = String(req.body.artist || "").trim();
 
       const audioHash = createAudioHash(req.file.buffer);
       let song = await findSongConflict({
         title: cleanTitle,
         audioHash,
-        ownerUserId: req.user._id,
+        artist: cleanArtist,
       });
 
       if (song) {
@@ -570,16 +621,29 @@ router.post(
       } else {
         const fileData = await uploadFile(req.file, "cohort-audio");
 
-        song = await songModel.create({
-          title: cleanTitle,
-          titleKey: createTitleKey(cleanTitle),
-          artist: String(req.body.artist || "").trim(),
-          audio: fileData.url,
-          audioHash,
-          mood: String(req.body.mood || "").trim(),
-          ownerUserId: req.user._id,
-          ownerUsername: req.user.username,
-        });
+        try {
+          song = await songModel.create({
+            title: cleanTitle,
+            titleKey: createTitleKey(cleanTitle),
+            artist: cleanArtist,
+            artistKey: createArtistKey(cleanArtist),
+            audio: fileData.url,
+            audioHash,
+            mood: String(req.body.mood || "").trim(),
+            ownerUserId: req.user._id,
+            ownerUsername: req.user.username,
+          });
+        } catch (error) {
+          // Another request may have inserted the same central song between check and create.
+          if (error?.code === 11000) {
+            song =
+              (await songModel.findOne({ audioHash })) ||
+              (await songModel.findOne({ titleKey: createTitleKey(cleanTitle), artistKey: createArtistKey(cleanArtist) }));
+          }
+          if (!song) {
+            throw error;
+          }
+        }
       }
 
       playlist.songs.push(song._id);
@@ -588,7 +652,7 @@ router.post(
         playlist,
         actor: req.user,
         type: "add_song",
-        text: `added "${song.title}" by ${song.artist || "Unknown"}.`,
+        text: `added "${song.title}".`,
       });
 
       const updatedPlaylist = await playlistModel.findById(playlist._id).populate("songs");

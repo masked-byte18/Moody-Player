@@ -1,8 +1,11 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getDummyPlaylistById } from "../data/discoverDummyData";
 import { getContributionActivity, getPlaylistDraft } from "../utils/collaborationInbox";
 import "./NotificationsPage.css";
+
+const API = "http://localhost:3000";
 
 const formatRelativeTime = (value) => {
   const diffMinutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60000));
@@ -11,10 +14,57 @@ const formatRelativeTime = (value) => {
   return `${Math.round(diffMinutes / 1440)} day ago`;
 };
 
-function PlaylistActivityPage() {
+const stripByNotation = (value = "") => value.replace(/\s+by\s+[^.]+\.?$/i, ".").trim();
+
+const normalizeActivityEntry = (entry) => {
+  const rawPlaylistId =
+    typeof entry?.playlist === "string"
+      ? entry.playlist
+      : entry?.playlist?._id || entry?.playlistId || "";
+
+  return {
+    ...entry,
+    id: entry?._id || entry?.id || "",
+    playlistId: String(rawPlaylistId || ""),
+  };
+};
+
+function PlaylistActivityPage({ authToken }) {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const [activityFeed, setActivityFeed] = useState([]);
+
+  const loadActivity = useCallback(async () => {
+    if (!id) {
+      setActivityFeed([]);
+      return;
+    }
+
+    if (!authToken) {
+      setActivityFeed(
+        [...getContributionActivity(id)].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
+      );
+      return;
+    }
+
+    try {
+      const response = await axios.get(`${API}/playlists/${id}/activity`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const normalized = (response.data?.activities || [])
+        .map(normalizeActivityEntry)
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+      setActivityFeed(normalized);
+    } catch (error) {
+      console.error("Failed to load playlist activity:", error);
+      setActivityFeed(
+        [...getContributionActivity(id)].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
+      );
+    }
+  }, [authToken, id]);
 
   const playlistName = useMemo(() => {
     const stateName = location.state?.playlistName;
@@ -26,9 +76,23 @@ function PlaylistActivityPage() {
     return "Playlist Activity";
   }, [id, location.state]);
 
-  const activityFeed = useMemo(() => {
-    return [...getContributionActivity(id)].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
-  }, [id]);
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      loadActivity();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [loadActivity]);
+
+  useEffect(() => {
+    if (!authToken) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      loadActivity();
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [authToken, loadActivity]);
 
   return (
     <div className="page-shell">
@@ -96,7 +160,7 @@ function PlaylistActivityPage() {
                       </button>
                     </div>
                   </div>
-                  <p>{entry.text}</p>
+                  <p>{stripByNotation(entry.text)}</p>
                 </div>
                 <time>{formatRelativeTime(entry.createdAt)}</time>
               </article>
@@ -109,4 +173,3 @@ function PlaylistActivityPage() {
 }
 
 export default PlaylistActivityPage;
-
