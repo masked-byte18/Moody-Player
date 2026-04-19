@@ -68,6 +68,8 @@ const PlaylistPage = ({
   const [showContributeModal, setShowContributeModal] = useState(false);
   const [contributeMessage, setContributeMessage] = useState("");
   const [pendingRequest, setPendingRequest] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("");
 
   const authConfig = authToken
     ? {
@@ -202,19 +204,31 @@ const PlaylistPage = ({
   }, []);
 
   useEffect(() => {
-    if (!playlist || !activeUser || activeUser === "guest") {
+    if (!playlist || !activeUser || activeUser === "guest" || !authConfig) {
       setPendingRequest(false);
       return;
     }
 
-    setPendingRequest(
-      hasPendingCollaborationRequest({
-        playlistId: playlist._id,
-        ownerUsername: playlist.ownerUsername,
-        requesterUsername: activeUser,
-      })
-    );
-  }, [activeUser, playlist]);
+    const checkPending = async () => {
+      try {
+        const response = await axios.get(`${API}/collab/requests/outgoing`, authConfig);
+        const outgoing = response.data?.requests || [];
+        const hasPending = outgoing.some(
+          (r) => (r.playlist === playlist._id || r.playlist?._id === playlist._id) && r.status === "pending"
+        );
+        setPendingRequest(hasPending);
+      } catch {
+        setPendingRequest(false);
+      }
+    };
+    checkPending();
+  }, [activeUser, playlist, authConfig]);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   useEffect(() => {
     const handleCollaborationUpdate = async () => {
@@ -578,10 +592,11 @@ const PlaylistPage = ({
     }
   };
 
-  const handleSubmitContributionRequest = () => {
+  const handleSubmitContributionRequest = async () => {
     if (!playlist) return;
-    if (!activeUser || activeUser === "guest") {
-      alert("Please log in to send a contribution request.");
+    if (!activeUser || activeUser === "guest" || !authConfig) {
+      setToastMessage("Please log in to send a contribution request.");
+      setToastType("error");
       return;
     }
 
@@ -591,23 +606,27 @@ const PlaylistPage = ({
     }
 
     if (pendingRequest) {
-      alert("You already sent a collaboration request for this playlist.");
+      setToastMessage("You already sent a collaboration request for this playlist.");
+      setToastType("error");
       return;
     }
 
-    createCollaborationRequest({
-      playlistId: playlist._id,
-      playlistName: playlist.name,
-      ownerUsername: playlist.ownerUsername,
-      ownerDisplayName: location.state?.ownerDisplayName || playlist.ownerDisplayName || playlist.ownerUsername,
-      requesterUsername: activeUser,
-      requesterDisplayName: activeDisplayName || activeUser,
-      message: contributeMessage,
-    });
-    setPendingRequest(true);
-    setShowContributeModal(false);
-    setContributeMessage("");
-    alert("Contribution request sent to the playlist owner.");
+    try {
+      await axios.post(
+        `${API}/playlists/${playlist._id}/collab/request`,
+        { message: contributeMessage },
+        authConfig
+      );
+      setPendingRequest(true);
+      setShowContributeModal(false);
+      setContributeMessage("");
+      setToastMessage("Contribution request sent to the playlist owner.");
+      setToastType("success");
+    } catch (error) {
+      console.error("Contribution request error:", error);
+      setToastMessage(error?.response?.data?.message || "Failed to send request.");
+      setToastType("error");
+    }
   };
 
   const handleContributeButtonClick = () => {
@@ -1037,6 +1056,12 @@ const PlaylistPage = ({
                 </button>
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {toastMessage ? (
+          <div className={`inline-toast ${toastType === "error" ? "inline-toast-error" : "inline-toast-success"}`}>
+            {toastMessage}
           </div>
         ) : null}
       </div>

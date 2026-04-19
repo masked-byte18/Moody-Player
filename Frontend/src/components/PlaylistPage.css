@@ -690,3 +690,69 @@
     min-width: 205px;
   }
 }
+
+.inline-toast {
+  position: fixed;
+  bottom: 5.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.82rem 1.4rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.45);
+  animation: toastSlideIn 0.32s ease;
+  pointer-events: none;
+  max-width: 90vw;
+  text-align: center;
+}
+
+.inline-toast-success {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+}
+
+.inline-toast-error {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.discover-like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.15rem;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.discover-like-button:hover {
+  color: #f43f5e;
+  transform: scale(1.1);
+}
+
+.discover-like-button.is-liked {
+  color: #f43f5e;
+}
+
+.discover-like-count {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: inherit;
+}

@@ -382,6 +382,7 @@ function App() {
             <FeaturedHubPage
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
+              authToken={userState.token}
             />
           }
         />
@@ -391,6 +392,7 @@ function App() {
             <DiscoverProfilePage
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
+              authToken={userState.token}
             />
           }
         />

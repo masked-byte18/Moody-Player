@@ -13,6 +13,7 @@ function LoginPage({ onAuthSuccess }) {
   const [emailForOtp, setEmailForOtp] = useState("");
   const [otp, setOtp] = useState("");
   const [otpStep, setOtpStep] = useState(false);
+  const [formError, setFormError] = useState("");
   const [googleReady, setGoogleReady] = useState(false);
   const googleButtonRef = useRef(null);
 
@@ -55,7 +56,7 @@ function LoginPage({ onAuthSuccess }) {
             });
             navigate("/");
           } catch (error) {
-            alert(error?.response?.data?.message || "Google sign in failed");
+            setFormError(error?.response?.data?.message || "Google sign in failed");
           }
         },
       });
@@ -102,6 +103,7 @@ function LoginPage({ onAuthSuccess }) {
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    setFormError("");
     try {
       const response = await axios.post(`${API}/auth/login`, {
         identifier,
@@ -111,14 +113,14 @@ function LoginPage({ onAuthSuccess }) {
       });
       setEmailForOtp(response.data.email || "");
       setOtpStep(true);
-      alert("OTP sent. Check your email (or backend console in dev mode).");
     } catch (error) {
-      alert(error?.response?.data?.message || "Login failed");
+      setFormError(error?.response?.data?.message || "Wrong credentials, please try again.");
     }
   };
 
   const handleVerifyOtp = async (event) => {
     event.preventDefault();
+    setFormError("");
     try {
       const response = await axios.post(`${API}/auth/verify-login`, {
         email: emailForOtp,
@@ -132,7 +134,7 @@ function LoginPage({ onAuthSuccess }) {
       });
       navigate("/");
     } catch (error) {
-      alert(error?.response?.data?.message || "OTP verification failed");
+      setFormError(error?.response?.data?.message || "OTP verification failed. Please try again.");
     }
   };
 
@@ -149,7 +151,7 @@ function LoginPage({ onAuthSuccess }) {
               <input
                 type="text"
                 value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
+                onChange={(event) => { setIdentifier(event.target.value); setFormError(""); }}
                 required
               />
             </label>
@@ -158,11 +160,18 @@ function LoginPage({ onAuthSuccess }) {
               <input
                 type="password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => { setPassword(event.target.value); setFormError(""); }}
                 required
               />
             </label>
-            <button type="submit">Send OTP</button>
+
+            {formError ? <p className="auth-error">{formError}</p> : null}
+
+            <div className="auth-button-row">
+              <button type="submit">Send OTP</button>
+              <span className="auth-hint-inline">You'll receive an OTP in your email</span>
+            </div>
+
             {GOOGLE_CLIENT_ID ? (
               <div className={`google-button-shell ${googleReady ? "is-ready" : ""}`}>
                 <div ref={googleButtonRef} className="google-button-slot" />
@@ -176,10 +185,13 @@ function LoginPage({ onAuthSuccess }) {
               <input
                 type="text"
                 value={otp}
-                onChange={(event) => setOtp(event.target.value)}
+                onChange={(event) => { setOtp(event.target.value); setFormError(""); }}
                 required
               />
             </label>
+
+            {formError ? <p className="auth-error">{formError}</p> : null}
+
             <button type="submit">Verify and Log In</button>
           </form>
         )}

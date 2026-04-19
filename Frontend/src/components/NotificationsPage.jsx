@@ -8,8 +8,9 @@ import {
   getContributionActivity,
   getInboxRequestsForUser,
 } from "../utils/collaborationInbox";
-import { getDummyFriendNotifications, getDummyFriendsList } from "../utils/notificationSamples";
+import { getDummyFriendsList } from "../utils/notificationSamples";
 import "./NotificationsPage.css";
+import "./PlaylistPage.css";
 
 const API = "http://localhost:3000";
 
@@ -130,6 +131,8 @@ function NotificationsPage({ activeUser, authToken }) {
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || "friends");
   const [contributorView, setContributorView] = useState(location.state?.contributorView || "people");
   const [requests, setRequests] = useState([]);
+  const [outgoingRequests, setOutgoingRequests] = useState([]);
+  const [realNotifications, setRealNotifications] = useState([]);
   const [friendStatuses, setFriendStatuses] = useState({});
   const [friendList, setFriendList] = useState([]);
   const [contributors, setContributors] = useState([]);
@@ -138,6 +141,8 @@ function NotificationsPage({ activeUser, authToken }) {
   const [sentMessages, setSentMessages] = useState({});
   const [contributionTarget, setContributionTarget] = useState(null);
   const [activityMap, setActivityMap] = useState({});
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("");
 
   const isLoggedIn = Boolean(activeUser && activeUser !== "guest" && authToken);
   const authHeaders = useMemo(
@@ -152,19 +157,25 @@ function NotificationsPage({ activeUser, authToken }) {
 
     if (!isLoggedIn) {
       setRequests([]);
+      setOutgoingRequests([]);
+      setRealNotifications([]);
       setContributors([]);
       setActivityMap({});
       return;
     }
 
     try {
-      const [requestsResponse, managedResponse] = await Promise.all([
+      const [requestsResponse, managedResponse, outgoingResponse, notificationsResponse] = await Promise.all([
         axios.get(`${API}/collab/requests/inbox`, { headers: authHeaders }),
         axios.get(`${API}/playlists/managed`, { headers: authHeaders }),
+        axios.get(`${API}/collab/requests/outgoing`, { headers: authHeaders }),
+        axios.get(`${API}/notifications`, { headers: authHeaders }),
       ]);
 
       const normalizedRequests = (requestsResponse.data?.requests || []).map(normalizeRequest);
       setRequests(normalizedRequests);
+      setOutgoingRequests((outgoingResponse.data?.requests || []).map(normalizeRequest));
+      setRealNotifications(notificationsResponse.data?.notifications || []);
 
       const managedPlaylists = managedResponse.data?.playlists || [];
       const filteredPlaylists = playlistFilterId
@@ -250,7 +261,7 @@ function NotificationsPage({ activeUser, authToken }) {
     return () => window.cancelAnimationFrame(frameId);
   }, [location.state]);
 
-  const friendNotifications = useMemo(() => getDummyFriendNotifications(activeUser), [activeUser]);
+  const friendNotifications = useMemo(() => realNotifications, [realNotifications]);
   const pendingRequests = useMemo(
     () => requests.filter((request) => request.status === "pending"),
     [requests]
@@ -262,6 +273,12 @@ function NotificationsPage({ activeUser, authToken }) {
 
     return [...source].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
   }, [activityMap, playlistFilterId]);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
   const playlistActivityGroups = useMemo(() => {
     const grouped = new Map();
     playlistActivityFeed.forEach((entry) => {
@@ -460,60 +477,63 @@ function NotificationsPage({ activeUser, authToken }) {
 
         {activeTab === "friends" ? (
           <section className="notifications-panel">
-            {friendNotifications.map((item) => (
-              <article key={item.id} className="notification-card">
-                <div className="notification-avatar">
-                  {(item.fromDisplayName || item.fromUsername || "U").charAt(0).toUpperCase()}
-                </div>
-                <div className="notification-copy">
-                  {(() => {
-                    const currentStatus = friendStatuses[item.id] || item.status || null;
-                    const isPendingRequest =
-                      item.type === "request" && currentStatus !== "accepted" && currentStatus !== "rejected";
+            {friendNotifications.length === 0 ? (
+              <div className="notifications-empty-card">
+                <p>No updates yet. Follow users to see their activity here.</p>
+              </div>
+            ) : (
+              friendNotifications.map((item) => {
+                const notifIcon =
+                  item.type === "follow" ? "ri-user-add-line" :
+                  item.type === "new_playlist" ? "ri-play-list-add-line" :
+                  item.type === "like_playlist" ? "ri-heart-fill" :
+                  item.type === "collab_rejected" ? "ri-close-circle-line" :
+                  "ri-notification-3-line";
 
-                    return (
-                      <>
-                        <div className="notification-management-header">
-                          <div className="notification-management-meta">
-                            <div className="notification-topline">
-                              <strong>{item.fromDisplayName}</strong>
-                              <span className={`notification-type is-${currentStatus || item.type}`}>
-                                {item.type === "request"
-                                  ? currentStatus === "accepted"
-                                    ? "Accepted"
-                                    : currentStatus === "rejected"
-                                      ? "Rejected"
-                                      : "Friend Request"
-                                  : "Friend Update"}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              className="notification-username notification-username-link"
-                              onClick={() => openUserProfile(item.fromUsername)}
-                            >
-                              @{item.fromUsername}
-                            </button>
+                const notifChipClass =
+                  item.type === "follow" ? "is-update" :
+                  item.type === "new_playlist" ? "is-accepted" :
+                  item.type === "like_playlist" ? "is-message" :
+                  item.type === "collab_rejected" ? "is-rejected" :
+                  "is-update";
+
+                const notifLabel =
+                  item.type === "follow" ? "Follow" :
+                  item.type === "new_playlist" ? "New Playlist" :
+                  item.type === "like_playlist" ? "Liked" :
+                  item.type === "collab_rejected" ? "Rejected" :
+                  "Update";
+
+                return (
+                  <article key={item._id} className="notification-card">
+                    <div className="notification-avatar">
+                      <i className={notifIcon}></i>
+                    </div>
+                    <div className="notification-copy">
+                      <div className="notification-management-header">
+                        <div className="notification-management-meta">
+                          <div className="notification-topline">
+                            <strong>{item.senderDisplayName || item.senderUsername}</strong>
+                            <span className={`notification-type ${notifChipClass}`}>
+                              {notifLabel}
+                            </span>
                           </div>
-                          {isPendingRequest ? (
-                            <div className="notification-actions notification-actions-inline">
-                            <button type="button" onClick={() => handleFriendAction(item.id, "rejected")}>
-                                <i className="ri-close-line"></i>
-                              </button>
-                              <button type="button" className="btn-primary" onClick={() => handleFriendAction(item.id, "accepted")}>
-                                <i className="ri-check-line"></i>
-                              </button>
-                            </div>
-                          ) : null}
+                          <button
+                            type="button"
+                            className="notification-username notification-username-link"
+                            onClick={() => openUserProfile(item.senderUsername)}
+                          >
+                            @{item.senderUsername}
+                          </button>
                         </div>
-                        <p>{item.message}</p>
-                      </>
-                    );
-                  })()}
-                </div>
-                <time>{formatRelativeTime(item.createdAt)}</time>
-              </article>
-            ))}
+                      </div>
+                      <p>{item.message}</p>
+                    </div>
+                    <time>{formatRelativeTime(item.createdAt)}</time>
+                  </article>
+                );
+              })
+            )}
           </section>
         ) : activeTab === "collab" ? (
           <section className="notifications-panel">
@@ -568,6 +588,34 @@ function NotificationsPage({ activeUser, authToken }) {
                 </article>
               ))
             )}
+
+            {outgoingRequests.filter((r) => r.status === "rejected").length > 0 ? (
+              <>
+                <div className="notifications-empty-card" style={{ marginTop: "1rem", background: "transparent", border: 0, padding: "0.5rem 0" }}>
+                  <p style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Your Rejected Requests</p>
+                </div>
+                {outgoingRequests.filter((r) => r.status === "rejected").map((request) => (
+                  <article key={request.id} className="notification-card notification-card-collab">
+                    <div className="notification-avatar">
+                      <i className="ri-close-circle-line"></i>
+                    </div>
+                    <div className="notification-copy">
+                      <div className="notification-management-header">
+                        <div className="notification-management-meta">
+                          <div className="notification-topline">
+                            <strong>{request.playlistName}</strong>
+                            <span className="notification-type is-rejected">Rejected</span>
+                          </div>
+                          <span className="notification-username">by @{request.ownerUsername}</span>
+                        </div>
+                      </div>
+                      <p>Your contribution request was rejected.</p>
+                    </div>
+                    <time>{formatRelativeTime(request.respondedAt || request.createdAt)}</time>
+                  </article>
+                ))}
+              </>
+            ) : null}
           </section>
         ) : activeTab === "friendList" ? (
           <section className="notifications-panel">

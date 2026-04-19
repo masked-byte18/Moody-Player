@@ -6,6 +6,7 @@ const songModel = require("../models/song.model");
 const userProfileModel = require("../models/userProfile.model");
 const collaborationRequestModel = require("../models/collaborationRequest.model");
 const playlistActivityModel = require("../models/playlistActivity.model");
+const notificationModel = require("../models/notification.model");
 const { requireAuth } = require("../middleware/auth.middleware");
 const {
   createAudioHash,
@@ -138,6 +139,45 @@ router.post("/playlists", requireAuth, imageUpload.single("cover"), async (req, 
   } catch (error) {
     console.error("Playlist create error:", error);
     res.status(500).json({ message: "Playlist creation failed" });
+  }
+});
+
+router.post("/playlists/:id/clone", requireAuth, async (req, res) => {
+  try {
+    const original = await playlistModel.findById(req.params.id);
+    if (!original) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    if (!original.isFeatured && original.ownerUsername !== req.user.username) {
+      return res.status(403).json({ message: "Cannot clone private playlists" });
+    }
+
+    const existingClone = await playlistModel.findOne({
+      ownerUsername: req.user.username,
+      clonedFrom: original._id,
+    });
+
+    if (existingClone) {
+      return res.status(409).json({ message: "This playlist already exists in your library" });
+    }
+
+    const clonedPlaylist = await playlistModel.create({
+      name: original.name,
+      description: original.description,
+      ownerUsername: req.user.username,
+      ownerDisplayName: req.user.displayName || req.user.username,
+      coverImage: original.coverImage,
+      isFeatured: false,
+      songs: [...(original.songs || [])],
+      contributors: [],
+      clonedFrom: original._id,
+    });
+
+    res.status(201).json({ message: "Playlist saved to your library", playlist: clonedPlaylist });
+  } catch (error) {
+    console.error("Clone playlist error:", error);
+    res.status(500).json({ message: "Failed to clone playlist" });
   }
 });
 
@@ -406,6 +446,16 @@ router.post("/collab/requests/:requestId/respond", requireAuth, async (req, res)
       }
     } else {
       await request.save();
+
+      await notificationModel.create({
+        recipientUsername: request.requesterUsername,
+        senderUsername: req.user.username,
+        senderDisplayName: req.user.displayName || req.user.username,
+        type: "collab_rejected",
+        message: `rejected your request to contribute to "${request.playlistName}"`,
+        playlistId: request.playlist,
+        playlistName: request.playlistName,
+      });
     }
 
     return res.status(200).json({ message: `Request ${status}`, request });
@@ -574,6 +624,25 @@ router.put("/playlists/:id/publish", requireAuth, async (req, res) => {
       { $set: updates },
       { new: true }
     );
+
+    if (nextFeatured) {
+      const followers = await userProfileModel.find(
+        { following: playlist.ownerUsername },
+        { username: 1 }
+      ).lean();
+      const notifications = followers.map((follower) => ({
+        recipientUsername: follower.username,
+        senderUsername: playlist.ownerUsername,
+        senderDisplayName: playlist.ownerDisplayName || playlist.ownerUsername,
+        type: "new_playlist",
+        message: `published a new playlist "${playlist.name}"`,
+        playlistId: playlist._id,
+        playlistName: playlist.name,
+      }));
+      if (notifications.length) {
+        await notificationModel.insertMany(notifications);
+      }
+    }
 
     res.status(200).json({ message: nextFeatured ? "Playlist published" : "Playlist unpublished", playlist: updatedPlaylist });
   } catch (error) {
@@ -1040,6 +1109,14 @@ router.post("/social/follow/:targetUsername", requireAuth, async (req, res) => {
     if (!profile.following.includes(targetUsername)) {
       profile.following.push(targetUsername);
       await profile.save();
+
+      await notificationModel.create({
+        recipientUsername: targetUsername,
+        senderUsername: username,
+        senderDisplayName: req.user.displayName || username,
+        type: "follow",
+        message: `started following you`,
+      });
     }
 
     res.status(200).json({ message: "User followed" });
@@ -1066,6 +1143,82 @@ router.post("/social/unfollow/:targetUsername", requireAuth, async (req, res) =>
   } catch (error) {
     console.error("Unfollow user error:", error);
     res.status(500).json({ message: "Failed to unfollow user" });
+  }
+});
+
+router.post("/playlists/:id/like", requireAuth, async (req, res) => {
+  try {
+    const playlist = await playlistModel.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    const username = normalizeUsername(req.user.username);
+    const alreadyLiked = (playlist.likedBy || []).includes(username);
+
+    if (alreadyLiked) {
+      await playlistModel.findByIdAndUpdate(req.params.id, {
+        $pull: { likedBy: username },
+        $inc: { likesCount: -1 },
+      });
+      return res.status(200).json({ liked: false, likesCount: Math.max(0, (playlist.likesCount || 0) - 1) });
+    }
+
+    await playlistModel.findByIdAndUpdate(req.params.id, {
+      $addToSet: { likedBy: username },
+      $inc: { likesCount: 1 },
+    });
+
+    if (playlist.ownerUsername !== username) {
+      await notificationModel.create({
+        recipientUsername: playlist.ownerUsername,
+        senderUsername: username,
+        senderDisplayName: req.user.displayName || username,
+        type: "like_playlist",
+        message: `liked your playlist "${playlist.name}"`,
+        playlistId: playlist._id,
+        playlistName: playlist.name,
+      });
+    }
+
+    return res.status(200).json({ liked: true, likesCount: (playlist.likesCount || 0) + 1 });
+  } catch (error) {
+    console.error("Like toggle error:", error);
+    res.status(500).json({ message: "Failed to toggle like" });
+  }
+});
+
+router.get("/playlists/:id/clone-status", requireAuth, async (req, res) => {
+  try {
+    const existing = await playlistModel.findOne({
+      ownerUsername: req.user.username,
+      clonedFrom: req.params.id,
+    });
+    res.status(200).json({ cloned: Boolean(existing) });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to check clone status" });
+  }
+});
+
+router.get("/notifications", requireAuth, async (req, res) => {
+  try {
+    const notifications = await notificationModel
+      .find({ recipientUsername: req.user.username })
+      .sort({ createdAt: -1 })
+      .limit(100);
+    res.status(200).json({ notifications });
+  } catch (error) {
+    console.error("Notifications fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch notifications" });
+  }
+});
+
+router.put("/notifications/:id/read", requireAuth, async (req, res) => {
+  try {
+    await notificationModel.findByIdAndUpdate(req.params.id, { $set: { read: true } });
+    res.status(200).json({ message: "Notification marked as read" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to mark notification as read" });
   }
 });
 

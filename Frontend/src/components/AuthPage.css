@@ -100,3 +100,33 @@
     max-width: 100%;
   }
 }
+
+.auth-error {
+  margin: 0;
+  padding: 0.62rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: #ff6b6b;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.auth-button-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.auth-button-row button {
+  flex-shrink: 0;
+}
+
+.auth-hint-inline {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}

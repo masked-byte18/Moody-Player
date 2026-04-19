@@ -4,18 +4,24 @@ import axios from "axios";
 import { dummyDiscoverPlaylists } from "../data/discoverDummyData";
 import "./PlaylistsPage.css";
 import "./FeaturedHubPage.css";
+import "./PlaylistPage.css";
 
 const API = "http://localhost:3000";
 
 const FeaturedHubPage = ({
   activeUser,
   activeDisplayName,
+  authToken,
 }) => {
   const navigate = useNavigate();
   const [featuredPlaylists, setFeaturedPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [friends, setFriends] = useState([]);
+  const [likeState, setLikeState] = useState({});
+  const [clonedSet, setClonedSet] = useState(new Set());
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("");
 
   const loadFeaturedPlaylists = useCallback(async () => {
     setLoading(true);
@@ -24,13 +30,34 @@ const FeaturedHubPage = ({
       const apiPlaylists = response.data.playlists || [];
       const merged = [...dummyDiscoverPlaylists, ...apiPlaylists.filter((playlist) => !playlist._id?.startsWith("dummy-"))];
       setFeaturedPlaylists(merged);
+
+      const initialLikes = {};
+      merged.forEach((p) => {
+        initialLikes[p._id] = {
+          count: p.likesCount || 0,
+          liked: (p.likedBy || []).includes((activeUser || "").toLowerCase()),
+        };
+      });
+      setLikeState(initialLikes);
     } catch (error) {
       console.error("Failed to load featured playlists:", error);
       setFeaturedPlaylists(dummyDiscoverPlaylists);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeUser]);
+
+  const authConfig = useMemo(
+    () =>
+      authToken && activeUser && activeUser !== "guest"
+        ? {
+            headers: {
+              authorization: `Bearer ${authToken}`,
+            },
+          }
+        : null,
+    [activeUser, authToken]
+  );
 
   const loadFriends = useCallback(async () => {
     if (!activeUser || activeUser === "guest") {
@@ -49,6 +76,18 @@ const FeaturedHubPage = ({
     }
   }, [activeUser]);
 
+  const loadClonedStatus = useCallback(async () => {
+    if (!authConfig) return;
+    try {
+      const response = await axios.get(`${API}/playlists`, authConfig);
+      const owned = response.data?.playlists || [];
+      const clonedIds = new Set(owned.filter((p) => p.clonedFrom).map((p) => p.clonedFrom));
+      setClonedSet(clonedIds);
+    } catch {
+      // ignore
+    }
+  }, [authConfig]);
+
   useEffect(() => {
     loadFeaturedPlaylists();
   }, [loadFeaturedPlaylists]);
@@ -56,6 +95,16 @@ const FeaturedHubPage = ({
   useEffect(() => {
     loadFriends();
   }, [loadFriends]);
+
+  useEffect(() => {
+    loadClonedStatus();
+  }, [loadClonedStatus]);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   const followedUsernames = useMemo(
     () => new Set(friends.map((friend) => friend.username)),
@@ -90,8 +139,9 @@ const FeaturedHubPage = ({
 
   const handleFollowToggle = async (event, playlistOwnerUsername) => {
     event.stopPropagation();
-    if (!activeUser || activeUser === "guest") {
-      alert("Please log in to follow users.");
+    if (!authConfig) {
+      setToastMessage("Please log in to follow users.");
+      setToastType("error");
       return;
     }
 
@@ -99,20 +149,63 @@ const FeaturedHubPage = ({
 
     try {
       if (isFollowing) {
-        await axios.post(`${API}/social/unfollow/${playlistOwnerUsername}`, {
-          username: activeUser,
-        });
+        await axios.post(`${API}/social/unfollow/${playlistOwnerUsername}`, {}, authConfig);
       } else {
-        await axios.post(`${API}/social/follow/${playlistOwnerUsername}`, {
-          username: activeUser,
-          displayName: activeDisplayName,
-        });
+        await axios.post(`${API}/social/follow/${playlistOwnerUsername}`, {}, authConfig);
       }
-
       await loadFriends();
     } catch (error) {
       console.error("Follow toggle error:", error);
-      alert("Failed to update follow status");
+      setToastMessage("Failed to update follow status");
+      setToastType("error");
+    }
+  };
+
+  const handleClonePlaylist = async (event, playlistId) => {
+    event.stopPropagation();
+    if (!authConfig) {
+      setToastMessage("Please log in to save this playlist to your library.");
+      setToastType("error");
+      return;
+    }
+
+    if (clonedSet.has(playlistId)) {
+      setToastMessage("This playlist already exists in your library.");
+      setToastType("error");
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/playlists/${playlistId}/clone`, {}, authConfig);
+      setClonedSet((prev) => new Set([...prev, playlistId]));
+      setToastMessage("Saved to your library!");
+      setToastType("success");
+    } catch (error) {
+      console.error("Clone error:", error);
+      setToastMessage(error?.response?.data?.message || "Failed to add playlist to library");
+      setToastType("error");
+    }
+  };
+
+  const handleLikeToggle = async (event, playlistId) => {
+    event.stopPropagation();
+    if (!authConfig) {
+      setToastMessage("Please log in to like playlists.");
+      setToastType("error");
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API}/playlists/${playlistId}/like`, {}, authConfig);
+      setLikeState((prev) => ({
+        ...prev,
+        [playlistId]: {
+          count: response.data.likesCount,
+          liked: response.data.liked,
+        },
+      }));
+    } catch (error) {
+      console.error("Like error:", error);
     }
   };
 
@@ -162,7 +255,8 @@ const FeaturedHubPage = ({
           {!loading
             ? filteredPlaylists.map((playlist) => {
                 const isOwnPlaylist = playlist.ownerUsername === activeUser;
-                const isFollowing = followedUsernames.has(playlist.ownerUsername);
+                const like = likeState[playlist._id] || { count: 0, liked: false };
+                const isCloned = clonedSet.has(playlist._id);
 
                 return (
                   <article
@@ -196,18 +290,29 @@ const FeaturedHubPage = ({
 
                       <div className="discover-card-actions">
                         <span className="discover-song-count">{playlist.songs?.length || 0} songs</span>
+
+                        <button
+                          type="button"
+                          className={`discover-like-button${like.liked ? " is-liked" : ""}`}
+                          onClick={(event) => handleLikeToggle(event, playlist._id)}
+                          title={like.liked ? "Unlike" : "Like"}
+                        >
+                          <i className={like.liked ? "ri-heart-fill" : "ri-heart-line"}></i>
+                          {like.count > 0 ? <span className="discover-like-count">{like.count}</span> : null}
+                        </button>
+
                         {!isOwnPlaylist ? (
                           <button
                             type="button"
                             className="discover-add-button"
-                            onClick={(event) => handleFollowToggle(event, playlist.ownerUsername)}
-                            aria-label={isFollowing ? "Added to library" : "Add to library"}
-                            title={isFollowing ? "Added to library" : "Add to library"}
+                            onClick={(event) => handleClonePlaylist(event, playlist._id)}
+                            aria-label="Add to library"
+                            title={isCloned ? "Already in your library" : "Save a copy to your library"}
                           >
-                            <i className={isFollowing ? "ri-check-line" : "ri-add-line"}></i>
+                            <i className={isCloned ? "ri-check-line" : "ri-add-line"}></i>
                           </button>
                         ) : (
-                          <span className="discover-own-chip">In your library</span>
+                          <span className="discover-own-chip">Yours</span>
                         )}
                       </div>
                     </div>
@@ -216,6 +321,12 @@ const FeaturedHubPage = ({
               })
             : null}
         </div>
+
+        {toastMessage ? (
+          <div className={`inline-toast ${toastType === "error" ? "inline-toast-error" : "inline-toast-success"}`}>
+            {toastMessage}
+          </div>
+        ) : null}
       </div>
     </div>
   );
