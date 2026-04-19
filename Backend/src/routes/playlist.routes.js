@@ -553,25 +553,29 @@ router.put("/playlists/:id/publish", requireAuth, async (req, res) => {
     }
 
     const nextFeatured = Boolean(req.body?.isFeatured);
-    playlist.isFeatured = nextFeatured;
-    playlist.featuredAt = nextFeatured ? new Date() : null;
+    const updates = {
+      isFeatured: nextFeatured,
+      featuredAt: nextFeatured ? new Date() : null,
+    };
 
     if (!nextFeatured) {
-      const removedContributors = playlist.contributors || [];
-      playlist.contributors = [];
+      updates.contributors = [];
       await collaborationRequestModel.updateMany(
         {
           playlist: playlist._id,
           status: { $in: ["pending", "accepted"] },
-          requesterUsername: { $in: removedContributors },
         },
         { $set: { status: "rejected", respondedAt: new Date() } }
       );
     }
 
-    await playlist.save();
+    const updatedPlaylist = await playlistModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true }
+    );
 
-    res.status(200).json({ message: nextFeatured ? "Playlist published" : "Playlist unpublished", playlist });
+    res.status(200).json({ message: nextFeatured ? "Playlist published" : "Playlist unpublished", playlist: updatedPlaylist });
   } catch (error) {
     console.error("Playlist publish error:", error);
     res.status(500).json({ message: "Failed to update publish status" });
@@ -684,7 +688,7 @@ router.delete("/playlists/:id/songs/:songId", requireAuth, async (req, res) => {
     }
 
     const removedSong = await songModel.findById(songId);
-    playlist.songs = playlist.songs.filter((song) => song.toString() !== songId);
+    playlist.songs.pull(songId);
     await playlist.save();
     await logPlaylistActivity({
       playlist,

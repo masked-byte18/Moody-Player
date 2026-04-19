@@ -77,8 +77,8 @@ const PlaylistPage = ({
       }
     : null;
 
-  const loadPlaylist = useCallback(async () => {
-    setLoading(true);
+  const loadPlaylist = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
       const dummyFromState = location.state?.playlistData;
       if (dummyFromState?._id === id) {
@@ -110,37 +110,43 @@ const PlaylistPage = ({
         ? {
             ...apiPlaylist,
             ...localDraft,
-            songs: localDraft.songs || apiPlaylist?.songs || [],
+            songs: apiPlaylist?.songs || localDraft.songs || [],
           }
         : apiPlaylist;
       setPlaylist(mergedPlaylist);
       setLocalSongs(mergedPlaylist?.songs || []);
     } catch (error) {
       console.error("Failed to load playlist:", error);
-      const localDraft = getPlaylistDraft(id);
-      if (localDraft?._id === id) {
-        setPlaylist(localDraft);
-        setLocalSongs(localDraft.songs || []);
-        return;
-      }
 
-      const dummyPlaylist = getDummyPlaylistById(id);
-      if (dummyPlaylist) {
-        const mergedPlaylist = localDraft
-          ? {
-              ...dummyPlaylist,
-              ...localDraft,
-              songs: localDraft.songs || dummyPlaylist.songs || [],
-            }
-          : dummyPlaylist;
-        setPlaylist(mergedPlaylist);
-        setLocalSongs(mergedPlaylist.songs || []);
-      } else {
-        setPlaylist(null);
+      setPlaylist((prevPlaylist) => {
+        if (prevPlaylist) {
+          return prevPlaylist; // keep current state on background error
+        }
+        
+        const localDraft = getPlaylistDraft(id);
+        if (localDraft?._id === id) {
+          setLocalSongs(localDraft.songs || []);
+          return localDraft;
+        }
+
+        const dummyPlaylist = getDummyPlaylistById(id);
+        if (dummyPlaylist) {
+          const mergedPlaylist = localDraft
+            ? {
+                ...dummyPlaylist,
+                ...localDraft,
+                songs: localDraft.songs || dummyPlaylist.songs || [],
+              }
+            : dummyPlaylist;
+          setLocalSongs(mergedPlaylist.songs || []);
+          return mergedPlaylist;
+        }
+
         setLocalSongs([]);
-      }
+        return null;
+      });
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, [id, location.state]);
 
@@ -152,7 +158,7 @@ const PlaylistPage = ({
 
     try {
       const response = await axios.get(`${API}/playlists`, {
-        params: { username: activeUser, scope: "personal" },
+        params: { username: activeUser, scope: "owned" },
       });
       setUserPlaylists(response.data.playlists || []);
     } catch (error) {
@@ -164,6 +170,16 @@ const PlaylistPage = ({
   useEffect(() => {
     loadPlaylist();
   }, [loadPlaylist]);
+
+  useEffect(() => {
+    if (!playlist || String(id).startsWith("local-")) return;
+
+    const intervalId = window.setInterval(() => {
+      loadPlaylist(true);
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [id, loadPlaylist, playlist]);
 
   useEffect(() => {
     loadUserPlaylists();
@@ -419,6 +435,11 @@ const PlaylistPage = ({
 
     try {
       await axios.delete(`${API}/playlists/${playlist._id}/songs/${songId}?delete=true`, authConfig);
+      const nextSongs = localSongs.filter((song) => song._id !== songId);
+      let nextIndex = currentIndex;
+      if (!nextSongs.length) nextIndex = 0;
+      
+      syncPlaylistSongs(nextSongs, nextIndex);
       await loadPlaylist();
     } catch (error) {
       console.error("Delete song error:", error);

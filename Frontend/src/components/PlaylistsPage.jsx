@@ -45,8 +45,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     [authToken]
   );
 
-  const loadPlaylists = useCallback(async () => {
-    setLoading(true);
+  const loadPlaylists = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setLoadError("");
     try {
       if (!authConfig || !activeUser || activeUser === "guest") {
@@ -133,7 +133,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     if (!authConfig || !activeUser || activeUser === "guest") return undefined;
 
     const intervalId = window.setInterval(() => {
-      loadPlaylists();
+      loadPlaylists(true);
     }, 10000);
 
     return () => window.clearInterval(intervalId);
@@ -334,7 +334,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
         </div>
 
         <div className="playlist-grid playlist-grid-listing">
-          {loading ? <div className="empty-panel">Loading your playlists...</div> : null}
+          {loading && playlists.length === 0 && managedPlaylists.length === 0 && acceptedCollabPlaylists.length === 0 ? <div className="empty-panel">Loading your playlists...</div> : null}
           {!loading && loadError ? <div className="empty-panel">{loadError}</div> : null}
           {!loading && !loadError && activeUser === "guest" ? (
             <div className="empty-panel">
@@ -444,17 +444,7 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                       ></i>
                     </button>
                   ) : null}
-                  {activeView === "managed" && playlist.isFeatured ? (
-                    <button
-                      type="button"
-                      className="queue-action delete"
-                      onClick={(event) => handlePublishPlaylist(event, playlist)}
-                      aria-label="Remove from discover"
-                      title="Remove from discover"
-                    >
-                      <i className="ri-close-circle-line"></i>
-                    </button>
-                  ) : null}
+
                   {activeView !== "collab" ? (
                     <button
                       type="button"
