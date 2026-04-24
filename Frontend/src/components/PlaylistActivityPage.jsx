@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { getDummyPlaylistById } from "../data/discoverDummyData";
-import { getContributionActivity, getPlaylistDraft } from "../utils/collaborationInbox";
 import "./NotificationsPage.css";
 
 const API = "http://localhost:3000";
@@ -36,17 +34,7 @@ function PlaylistActivityPage({ authToken }) {
   const [activityFeed, setActivityFeed] = useState([]);
 
   const loadActivity = useCallback(async () => {
-    if (!id) {
-      setActivityFeed([]);
-      return;
-    }
-
-    if (!authToken) {
-      setActivityFeed(
-        [...getContributionActivity(id)].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
-      );
-      return;
-    }
+    if (!authToken || !id) return;
 
     try {
       const response = await axios.get(`${API}/playlists/${id}/activity`, {
@@ -60,21 +48,15 @@ function PlaylistActivityPage({ authToken }) {
       setActivityFeed(normalized);
     } catch (error) {
       console.error("Failed to load playlist activity:", error);
-      setActivityFeed(
-        [...getContributionActivity(id)].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
-      );
+      setActivityFeed([]);
     }
   }, [authToken, id]);
 
   const playlistName = useMemo(() => {
     const stateName = location.state?.playlistName;
     if (stateName) return stateName;
-    const draft = getPlaylistDraft(id);
-    if (draft?.name) return draft.name;
-    const dummy = getDummyPlaylistById(id);
-    if (dummy?.name) return dummy.name;
     return "Playlist Activity";
-  }, [id, location.state]);
+  }, [location.state]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {

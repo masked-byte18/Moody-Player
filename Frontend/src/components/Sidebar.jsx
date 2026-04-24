@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ensureDummyCollaborationRequests, getInboxRequestsForUser } from "../utils/collaborationInbox";
-import { getDummyFriendNotifications } from "../utils/notificationSamples";
 import "./Sidebar.css";
 
 const API = "http://localhost:3000";
@@ -35,15 +33,28 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
     onLogout();
   }, [onLogout]);
 
-  const loadInboxRequests = useCallback(() => {
-    if (!isLoggedIn) {
+  const [realNotificationsCount, setRealNotificationsCount] = useState(0);
+
+  const loadNotificationsData = useCallback(async () => {
+    if (!isLoggedIn || !authToken) {
       setInboxRequests([]);
+      setRealNotificationsCount(0);
       return;
     }
 
-    ensureDummyCollaborationRequests(user.username);
-    setInboxRequests(getInboxRequestsForUser(user.username));
-  }, [isLoggedIn, user.username]);
+    try {
+      const [collabRes, notifRes] = await Promise.all([
+        axios.get(`${API}/collab/requests/inbox`, { headers: { Authorization: `Bearer ${authToken}` } }),
+        axios.get(`${API}/notifications`, { headers: { Authorization: `Bearer ${authToken}` } })
+      ]);
+      setInboxRequests(collabRes.data?.requests || []);
+      
+      const unreadNotifs = (notifRes.data?.notifications || []).filter(n => !n.read).length;
+      setRealNotificationsCount(unreadNotifs);
+    } catch (error) {
+      console.error("Sidebar notification fetch error:", error);
+    }
+  }, [isLoggedIn, authToken]);
 
   const loadFriends = useCallback(async () => {
     if (!isLoggedIn || !authToken) {
@@ -106,17 +117,34 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
     const frameId = window.requestAnimationFrame(() => {
       loadFriends();
       loadSocialStats();
-      loadInboxRequests();
+      loadNotificationsData();
     });
 
-    return () => window.cancelAnimationFrame(frameId);
-  }, [authToken, isLoggedIn, loadFriends, loadInboxRequests, loadSocialStats, user.username, location.pathname]);
+    let intervalId;
+    if (isLoggedIn && authToken) {
+      intervalId = window.setInterval(() => {
+        loadNotificationsData();
+      }, 10000);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [authToken, isLoggedIn, loadFriends, loadNotificationsData, loadSocialStats, user.username, location.pathname]);
 
   useEffect(() => {
-    const handleCollaborationUpdate = () => loadInboxRequests();
+    const handleCollaborationUpdate = () => loadNotificationsData();
+    const handleNotificationsRead = () => setRealNotificationsCount(0);
+    
     window.addEventListener("moody-collaboration-updated", handleCollaborationUpdate);
-    return () => window.removeEventListener("moody-collaboration-updated", handleCollaborationUpdate);
-  }, [loadInboxRequests]);
+    window.addEventListener("moody-notifications-read", handleNotificationsRead);
+    
+    return () => {
+      window.removeEventListener("moody-collaboration-updated", handleCollaborationUpdate);
+      window.removeEventListener("moody-notifications-read", handleNotificationsRead);
+    };
+  }, [loadNotificationsData]);
 
   const handleCloseMobile = () => {
     if (typeof onCloseMobile === "function") {
@@ -177,9 +205,8 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
 
   const totalNotificationCount = useMemo(() => {
     const pendingCollab = inboxRequests.filter((request) => request.status === "pending").length;
-    const socialItems = getDummyFriendNotifications(user.username).length;
-    return pendingCollab + socialItems;
-  }, [inboxRequests, user.username]);
+    return pendingCollab + realNotificationsCount;
+  }, [inboxRequests, realNotificationsCount]);
 
   return (
     <>
@@ -227,7 +254,12 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         </div>
       </div>
 
-      <button type="button" className="profile-entry" onClick={openProfileModal}>
+      <button type="button" className="profile-entry" onClick={() => {
+        handleCloseMobile();
+        if (isLoggedIn) {
+          navigate(`/discover/users/${user.username}`);
+        }
+      }}>
         {user.profilePhoto ? (
           <img src={user.profilePhoto} alt={user.displayName || user.username} className="avatar-photo" />
         ) : (
@@ -243,15 +275,15 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
 
       <nav className="sidebar-nav">
         <NavLink to="/" onClick={handleCloseMobile}>
-          Mood
+          <i className="ri-music-2-line"></i> Mood
         </NavLink>
         {isLoggedIn ? (
           <NavLink to="/playlists" onClick={handleCloseMobile}>
-            Playlists
+            <i className="ri-play-list-2-line"></i> Playlists
           </NavLink>
         ) : null}
         <NavLink to="/discover" onClick={handleCloseMobile}>
-          Discover
+          <i className="ri-compass-3-line"></i> Discover
         </NavLink>
       </nav>
 

@@ -18,7 +18,7 @@ const notificationSchema = new mongoose.Schema(
     senderDisplayName: { type: String, default: "" },
     type: {
       type: String,
-      enum: ["follow", "new_playlist", "like_playlist", "collab_rejected"],
+      enum: ["follow", "new_playlist", "like_playlist", "collab_rejected", "request_message"],
       required: true,
       index: true,
     },

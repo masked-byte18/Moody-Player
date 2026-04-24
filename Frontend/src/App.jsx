@@ -393,6 +393,7 @@ function App() {
               activeUser={userState.username}
               activeDisplayName={userState.displayName}
               authToken={userState.token}
+              onUserChange={handleUserStateChange}
             />
           }
         />

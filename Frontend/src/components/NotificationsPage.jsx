@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  ensureDummyCollaborationRequests,
-  getCollaborationAccessMap,
-  getCollaborationRequests,
-  getContributionActivity,
-  getInboxRequestsForUser,
-} from "../utils/collaborationInbox";
-import { getDummyFriendsList } from "../utils/notificationSamples";
 import "./NotificationsPage.css";
 import "./PlaylistPage.css";
 
@@ -31,36 +23,7 @@ const getContributionNotation = (type) => {
   return { chipClass: "is-update", label: "Updated" };
 };
 
-const DUMMY_CONTRIBUTION_NOTATION = [
-  {
-    id: "dummy-notation-add",
-    type: "add_song",
-    icon: "ri-play-list-add-line",
-    title: "Dummy Example",
-    copy: 'added "Neon Lights".',
-  },
-  {
-    id: "dummy-notation-delete",
-    type: "delete_song",
-    icon: "ri-delete-bin-6-line",
-    title: "Dummy Example",
-    copy: 'deleted "Late Window" from the playlist.',
-  },
-  {
-    id: "dummy-notation-reorder",
-    type: "reorder",
-    icon: "ri-drag-move-2-line",
-    title: "Dummy Example",
-    copy: "reordered tracks to improve transition flow.",
-  },
-  {
-    id: "dummy-notation-message",
-    type: "request_message",
-    icon: "ri-message-2-line",
-    title: "Dummy Request Message",
-    copy: "Can I help refine the first half mood arc?",
-  },
-];
+
 
 const normalizeRequest = (request) => {
   const rawPlaylistId =
@@ -88,42 +51,7 @@ const normalizeActivityEntry = (entry) => {
   };
 };
 
-const buildDemoContributorSnapshot = (activeUser, playlistFilterId = "") => {
-  ensureDummyCollaborationRequests(activeUser);
 
-  const demoRequests = getInboxRequestsForUser(activeUser).map(normalizeRequest);
-  const allRequests = getCollaborationRequests().map(normalizeRequest);
-  const accessMap = getCollaborationAccessMap();
-  const playlistIds = Object.keys(accessMap).filter(
-    (playlistId) => !playlistFilterId || String(playlistId) === String(playlistFilterId)
-  );
-
-  const contributors = playlistIds.flatMap((playlistId) =>
-    (accessMap[playlistId] || []).map((username) => {
-      const matchingRequest = allRequests.find(
-        (request) =>
-          request.playlistId === String(playlistId) &&
-          (request.requesterUsername || "").toLowerCase() === String(username).toLowerCase()
-      );
-      return {
-        id: `${playlistId}-${username}`,
-        playlistId: String(playlistId),
-        playlistName: matchingRequest?.playlistName || "Shared Playlist",
-        username,
-        displayName: matchingRequest?.requesterDisplayName || username,
-      };
-    })
-  );
-
-  const activityMap = Object.fromEntries(
-    playlistIds.map((playlistId) => [
-      String(playlistId),
-      (getContributionActivity(playlistId) || []).map(normalizeActivityEntry),
-    ])
-  );
-
-  return { requests: demoRequests, contributors, activityMap };
-};
 
 function NotificationsPage({ activeUser, authToken }) {
   const location = useLocation();
@@ -153,9 +81,8 @@ function NotificationsPage({ activeUser, authToken }) {
   const playlistFilterName = location.state?.playlistName || "";
 
   const reloadRequests = useCallback(async () => {
-    setFriendList(getDummyFriendsList(activeUser));
-
     if (!isLoggedIn) {
+      setFriendList([]);
       setRequests([]);
       setOutgoingRequests([]);
       setRealNotifications([]);
@@ -165,12 +92,15 @@ function NotificationsPage({ activeUser, authToken }) {
     }
 
     try {
-      const [requestsResponse, managedResponse, outgoingResponse, notificationsResponse] = await Promise.all([
+      const [requestsResponse, managedResponse, outgoingResponse, notificationsResponse, friendsResponse] = await Promise.all([
         axios.get(`${API}/collab/requests/inbox`, { headers: authHeaders }),
         axios.get(`${API}/playlists/managed`, { headers: authHeaders }),
         axios.get(`${API}/collab/requests/outgoing`, { headers: authHeaders }),
         axios.get(`${API}/notifications`, { headers: authHeaders }),
+        axios.get(`${API}/social/friends`, { headers: authHeaders, params: { username: activeUser } }),
       ]);
+
+      setFriendList(friendsResponse.data?.friends || []);
 
       const normalizedRequests = (requestsResponse.data?.requests || []).map(normalizeRequest);
       setRequests(normalizedRequests);
@@ -208,26 +138,13 @@ function NotificationsPage({ activeUser, authToken }) {
         })
       );
       const nextActivityMap = Object.fromEntries(activityResponses);
-      const nextActivityCount = Object.values(nextActivityMap).flatMap((entries) => entries || []).length;
-
-      const shouldUseDemoFallback = nextContributors.length === 0 || nextActivityCount === 0;
-      if (shouldUseDemoFallback) {
-        const demoSnapshot = buildDemoContributorSnapshot(activeUser, playlistFilterId);
-
-        setRequests((current) => (current.length ? current : demoSnapshot.requests));
-        setContributors(nextContributors.length ? nextContributors : demoSnapshot.contributors);
-        setActivityMap(nextActivityCount > 0 ? nextActivityMap : demoSnapshot.activityMap);
-        return;
-      }
-
       setContributors(nextContributors);
       setActivityMap(nextActivityMap);
     } catch (error) {
       console.error("Failed to load contributor notifications:", error);
-      const demoSnapshot = buildDemoContributorSnapshot(activeUser, playlistFilterId);
-      setRequests(demoSnapshot.requests);
-      setContributors(demoSnapshot.contributors);
-      setActivityMap(demoSnapshot.activityMap);
+      setRequests([]);
+      setContributors([]);
+      setActivityMap({});
     }
   }, [activeUser, authHeaders, isLoggedIn, playlistFilterId]);
 
@@ -237,6 +154,18 @@ function NotificationsPage({ activeUser, authToken }) {
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [reloadRequests]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !authToken) return;
+    
+    // Mark all notifications as read when user visits this page
+    axios.put(`${API}/notifications/read-all`, {}, { headers: authHeaders })
+      .then(() => {
+        // Dispatch an event so the Sidebar can instantly update its badge
+        window.dispatchEvent(new Event("moody-notifications-read"));
+      })
+      .catch((err) => console.error("Failed to mark notifications as read:", err));
+  }, [isLoggedIn, authToken, authHeaders]);
 
   useEffect(() => {
     if (!isLoggedIn || activeTab !== "contributors") return undefined;
@@ -317,7 +246,8 @@ function NotificationsPage({ activeUser, authToken }) {
       await reloadRequests();
     } catch (error) {
       console.error("Failed to respond to request:", error);
-      alert(error?.response?.data?.message || "Failed to update request status.");
+      setToastMessage(error?.response?.data?.message || "Failed to update request status.");
+      setToastType("error");
     }
   };
 
@@ -342,18 +272,35 @@ function NotificationsPage({ activeUser, authToken }) {
       await reloadRequests();
     } catch (error) {
       console.error("Failed to remove contributor:", error);
-      alert(error?.response?.data?.message || "Failed to remove contributor.");
+      setToastMessage(error?.response?.data?.message || "Failed to remove contributor.");
+      setToastType("error");
     }
   };
 
-  const handleSendManualMessage = () => {
-    if (!messageTarget || !manualMessage.trim()) return;
-    setSentMessages((current) => ({
-      ...current,
-      [messageTarget.id]: manualMessage.trim(),
-    }));
-    setManualMessage("");
-    setMessageTarget(null);
+  const handleSendManualMessage = async () => {
+    if (!messageTarget || !manualMessage.trim() || !authHeaders) return;
+    
+    try {
+      await axios.post(
+        `${API}/social/message/${messageTarget.username}`,
+        { message: manualMessage.trim() },
+        { headers: authHeaders }
+      );
+      
+      setSentMessages((current) => ({
+        ...current,
+        [messageTarget.id]: manualMessage.trim(),
+      }));
+      setToastMessage("Message sent successfully!");
+      setToastType("success");
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setToastMessage("Failed to send message.");
+      setToastType("error");
+    } finally {
+      setManualMessage("");
+      setMessageTarget(null);
+    }
   };
 
   const openUserProfile = (username) => {
@@ -381,6 +328,7 @@ function NotificationsPage({ activeUser, authToken }) {
         type: "request_message",
         icon: "ri-message-2-line",
         title: "Request message",
+        username: matchingRequest.requesterUsername || contributor.username,
         copy: matchingRequest.message,
       });
     }
@@ -400,6 +348,7 @@ function NotificationsPage({ activeUser, authToken }) {
                   ? "ri-drag-move-2-line"
                   : "ri-file-list-3-line",
         title: entry.actorDisplayName || contributor.displayName,
+        username: entry.actorUsername || contributor.username,
         copy: entry.text,
       });
     });
@@ -410,6 +359,7 @@ function NotificationsPage({ activeUser, authToken }) {
         type: "update",
         icon: "ri-user-shared-line",
         title: "Collaboration enabled",
+        username: contributor.username,
         copy: `${contributor.displayName} can now edit this playlist together.`,
       });
     }
@@ -488,6 +438,7 @@ function NotificationsPage({ activeUser, authToken }) {
                   item.type === "new_playlist" ? "ri-play-list-add-line" :
                   item.type === "like_playlist" ? "ri-heart-fill" :
                   item.type === "collab_rejected" ? "ri-close-circle-line" :
+                  item.type === "request_message" ? "ri-message-2-line" :
                   "ri-notification-3-line";
 
                 const notifChipClass =
@@ -495,6 +446,7 @@ function NotificationsPage({ activeUser, authToken }) {
                   item.type === "new_playlist" ? "is-accepted" :
                   item.type === "like_playlist" ? "is-message" :
                   item.type === "collab_rejected" ? "is-rejected" :
+                  item.type === "request_message" ? "is-message" :
                   "is-update";
 
                 const notifLabel =
@@ -502,6 +454,7 @@ function NotificationsPage({ activeUser, authToken }) {
                   item.type === "new_playlist" ? "New Playlist" :
                   item.type === "like_playlist" ? "Liked" :
                   item.type === "collab_rejected" ? "Rejected" :
+                  item.type === "request_message" ? "Message" :
                   "Update";
 
                 return (
@@ -576,7 +529,8 @@ function NotificationsPage({ activeUser, authToken }) {
                       ) : null}
                     </div>
                     <p>
-                      wants to contribute to <strong>{request.playlistName}</strong>
+                      {request.status === "accepted" ? "is now a contributor to " : request.status === "rejected" ? "requested to contribute to " : "wants to contribute to "}
+                      <strong>{request.playlistName}</strong>
                     </p>
                     {request.message ? (
                       <div className="notification-message-box">"{request.message}"</div>
@@ -839,25 +793,11 @@ function NotificationsPage({ activeUser, authToken }) {
                       <div className="contribution-log-copy">
                         <div className="contribution-log-title-row">
                           <strong>{entry.title}</strong>
-                          <span className={`notification-type ${getContributionNotation(entry.type).chipClass}`}>
-                            {getContributionNotation(entry.type).label}
-                          </span>
-                        </div>
-                        <p>{stripByNotation(entry.copy)}</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                <p className="contribution-log-legend-title">Dummy notation preview</p>
-                <div className="contribution-log-list">
-                  {DUMMY_CONTRIBUTION_NOTATION.map((entry) => (
-                    <article key={entry.id} className={`contribution-log-item contribution-log-${entry.type}`}>
-                      <span className="contribution-log-icon">
-                        <i className={entry.icon}></i>
-                      </span>
-                      <div className="contribution-log-copy">
-                        <div className="contribution-log-title-row">
-                          <strong>{entry.title}</strong>
+                          {entry.username ? (
+                            <span className="notification-username" style={{ marginLeft: "8px" }}>
+                              @{entry.username}
+                            </span>
+                          ) : null}
                           <span className={`notification-type ${getContributionNotation(entry.type).chipClass}`}>
                             {getContributionNotation(entry.type).label}
                           </span>
@@ -868,12 +808,22 @@ function NotificationsPage({ activeUser, authToken }) {
                   ))}
                 </div>
               </div>
+              <div className="modal-content">
+              <h3>Notations help</h3>
+              <p>Contributions in collaborative playlists log actions like adding, reordering, and removing songs automatically. Custom notations can also be provided.</p>
               <div className="modal-actions">
                 <button type="button" className="btn-primary" onClick={() => setContributionTarget(null)}>
                   Close
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+        {toastMessage ? (
+          <div className={`inline-toast ${toastType === "error" ? "inline-toast-error" : "inline-toast-success"}`}>
+            {toastMessage}
           </div>
         ) : null}
       </div>

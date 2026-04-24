@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { dummyDiscoverPlaylists } from "../data/discoverDummyData";
 import "./PlaylistsPage.css";
 import "./FeaturedHubPage.css";
 import "./PlaylistPage.css";
@@ -28,11 +27,22 @@ const FeaturedHubPage = ({
     try {
       const response = await axios.get(`${API}/featured/playlists`);
       const apiPlaylists = response.data.playlists || [];
-      const merged = [...dummyDiscoverPlaylists, ...apiPlaylists.filter((playlist) => !playlist._id?.startsWith("dummy-"))];
-      setFeaturedPlaylists(merged);
+      
+      const uniquePlaylists = [];
+      const seenNames = new Set();
+      
+      apiPlaylists.forEach((p) => {
+        const normalizedName = (p.name || "").toLowerCase().trim();
+        if (!seenNames.has(normalizedName)) {
+          seenNames.add(normalizedName);
+          uniquePlaylists.push(p);
+        }
+      });
+
+      setFeaturedPlaylists(uniquePlaylists);
 
       const initialLikes = {};
-      merged.forEach((p) => {
+      uniquePlaylists.forEach((p) => {
         initialLikes[p._id] = {
           count: p.likesCount || 0,
           liked: (p.likedBy || []).includes((activeUser || "").toLowerCase()),
@@ -41,7 +51,7 @@ const FeaturedHubPage = ({
       setLikeState(initialLikes);
     } catch (error) {
       console.error("Failed to load featured playlists:", error);
-      setFeaturedPlaylists(dummyDiscoverPlaylists);
+      setFeaturedPlaylists([]);
     } finally {
       setLoading(false);
     }
@@ -77,14 +87,20 @@ const FeaturedHubPage = ({
   }, [activeUser]);
 
   const loadClonedStatus = useCallback(async () => {
-    if (!authConfig) return;
+    if (!authConfig) {
+      setClonedSet(new Set());
+      return;
+    }
     try {
-      const response = await axios.get(`${API}/playlists`, authConfig);
+      const response = await axios.get(`${API}/playlists`, {
+        ...authConfig,
+        params: { username: activeUser, scope: "owned" },
+      });
       const owned = response.data?.playlists || [];
       const clonedIds = new Set(owned.filter((p) => p.clonedFrom).map((p) => p.clonedFrom));
       setClonedSet(clonedIds);
     } catch {
-      // ignore
+      setClonedSet(new Set());
     }
   }, [authConfig]);
 

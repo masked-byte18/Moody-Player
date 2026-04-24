@@ -34,7 +34,6 @@ export default function FacialExpression({
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
-
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -68,12 +67,27 @@ export default function FacialExpression({
       }
 
       const expressions = detection.expressions;
+
+      // ✅ Weights to boost subtle emotions that naturally score lower
+      const weights = {
+        angry: 1.5,
+        sad: 1.4,
+        happy: 1.2,
+        surprised: 1.3,
+        neutral: 0.8,   // lowered so it doesn't dominate
+        disgusted: 1.4,
+        fearful: 1.3,
+      };
+
+      // ✅ Raw score × weight for each mood
       const moodScores = {
-        angry: expressions.angry || 0,
-        sad: expressions.sad || 0,
-        happy: expressions.happy || 0,
-        surprised: expressions.surprised || 0,
-        neutral: (expressions.neutral || 0) + (expressions.disgusted || 0) + (expressions.fearful || 0),
+        angry: (expressions.angry || 0) * weights.angry,
+        sad: (expressions.sad || 0) * weights.sad,
+        happy: (expressions.happy || 0) * weights.happy,
+        surprised: (expressions.surprised || 0) * weights.surprised,
+        neutral: (expressions.neutral || 0) * weights.neutral,
+        disgusted: (expressions.disgusted || 0) * weights.disgusted,
+        fearful: (expressions.fearful || 0) * weights.fearful,
       };
 
       let detectedMood = "neutral";
@@ -85,6 +99,7 @@ export default function FacialExpression({
           detectedMood = mood;
         }
       }
+
       console.log("[Mood Detection] Detected mood:", detectedMood, moodScores);
 
       const sourceSongs = moodLibrary.length ? moodLibrary : moodSongs;
@@ -97,7 +112,10 @@ export default function FacialExpression({
           authToken && activeUser && activeUser !== "guest"
             ? { headers: { Authorization: `Bearer ${authToken}` } }
             : {};
-        const response = await axios.get(`http://localhost:3000/songs?mood=${detectedMood}`, requestConfig);
+        const response = await axios.get(
+          `http://localhost:3000/songs?mood=${detectedMood}`,
+          requestConfig
+        );
         if (onMoodDetected) {
           onMoodDetected(response.data.songs || []);
         }

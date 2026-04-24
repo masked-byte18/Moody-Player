@@ -2,18 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
-import { getDummyPlaylistById } from "../data/discoverDummyData";
-import {
-  canEditPlaylist,
-  createCollaborationRequest,
-  getCollaborationAccessMap,
-  getPlaylistDraft,
-  hasPendingCollaborationRequest,
-  isPlaylistCollaborator,
-  logContributionActivity,
-  removePlaylistCollaborator,
-  savePlaylistDraft,
-} from "../utils/collaborationInbox";
 import "./PlaylistPage.css";
 import "./PlaylistsPage.css";
 
@@ -70,6 +58,8 @@ const PlaylistPage = ({
   const [pendingRequest, setPendingRequest] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("");
+  const [pendingDeleteSongId, setPendingDeleteSongId] = useState(null);
+  const [showLeaveCollabConfirm, setShowLeaveCollabConfirm] = useState(false);
 
   const authConfig = authToken
     ? {
@@ -82,68 +72,16 @@ const PlaylistPage = ({
   const loadPlaylist = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
     try {
-      const dummyFromState = location.state?.playlistData;
-      if (dummyFromState?._id === id) {
-        const localDraft = getPlaylistDraft(id);
-        const mergedPlaylist = localDraft
-          ? {
-              ...dummyFromState,
-              ...localDraft,
-              songs: localDraft.songs || dummyFromState?.songs || [],
-            }
-          : dummyFromState;
-        setPlaylist(mergedPlaylist);
-        setLocalSongs(mergedPlaylist?.songs || []);
-        setLoading(false);
-        return;
-      }
-
-      const localDraft = getPlaylistDraft(id);
-      if (localDraft?._id === id && !String(id).match(/^[0-9a-fA-F]{24}$/)) {
-        setPlaylist(localDraft);
-        setLocalSongs(localDraft.songs || []);
-        setLoading(false);
-        return;
-      }
-
       const response = await axios.get(`${API}/playlists/${id}`);
       const apiPlaylist = response.data.playlist;
-      const mergedPlaylist = localDraft
-        ? {
-            ...apiPlaylist,
-            ...localDraft,
-            songs: apiPlaylist?.songs || localDraft.songs || [],
-          }
-        : apiPlaylist;
-      setPlaylist(mergedPlaylist);
-      setLocalSongs(mergedPlaylist?.songs || []);
+      setPlaylist(apiPlaylist);
+      setLocalSongs(apiPlaylist?.songs || []);
     } catch (error) {
       console.error("Failed to load playlist:", error);
-
       setPlaylist((prevPlaylist) => {
         if (prevPlaylist) {
           return prevPlaylist; // keep current state on background error
         }
-        
-        const localDraft = getPlaylistDraft(id);
-        if (localDraft?._id === id) {
-          setLocalSongs(localDraft.songs || []);
-          return localDraft;
-        }
-
-        const dummyPlaylist = getDummyPlaylistById(id);
-        if (dummyPlaylist) {
-          const mergedPlaylist = localDraft
-            ? {
-                ...dummyPlaylist,
-                ...localDraft,
-                songs: localDraft.songs || dummyPlaylist.songs || [],
-              }
-            : dummyPlaylist;
-          setLocalSongs(mergedPlaylist.songs || []);
-          return mergedPlaylist;
-        }
-
         setLocalSongs([]);
         return null;
       });
@@ -329,18 +267,6 @@ const PlaylistPage = ({
     if (!playlist) return;
 
     const removedSong = localSongs[index];
-    const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
-
-    if (canPersistCollaborativeEdit && removedSong?._id) {
-      try {
-        await axios.delete(`${API}/playlists/${playlist._id}/songs/${removedSong._id}`, authConfig);
-        await loadPlaylist();
-      } catch (error) {
-        console.error("Temporary remove error:", error);
-        alert(error?.response?.data?.message || "Failed to remove song");
-      }
-      return;
-    }
 
     const nextSongs = localSongs.filter((_, songIndex) => songIndex !== index);
     let nextIndex = currentIndex;
@@ -355,6 +281,8 @@ const PlaylistPage = ({
 
     syncPlaylistSongs(nextSongs, nextIndex);
     if (removedSong) {
+      setToastMessage(`Temporarily removed "${removedSong.title}". Refresh the page to restore it.`);
+      setToastType("success");
       recordContribution("remove_song", `removed "${removedSong.title}" from the active playlist view.`);
     }
   };
@@ -370,16 +298,15 @@ const PlaylistPage = ({
     }
 
     try {
-      const response = await axios.put(
+      await axios.put(
         `${API}/playlists/${playlist._id}/songs/reorder`,
         {
           songIds: nextSongs.map((song) => song?._id).filter(Boolean),
         },
         authConfig
       );
-      if (response.data?.playlist?.songs) {
-        syncPlaylistSongs(response.data.playlist.songs, nextIndex);
-      }
+      // Note: We deliberately skip a second syncPlaylistSongs here to prevent screen flickering. 
+      // The optimistic update above already correctly positioned the songs.
     } catch (error) {
       console.error("Reorder error:", error);
       await loadPlaylist();
@@ -430,11 +357,15 @@ const PlaylistPage = ({
     setDragOverIndex(null);
   };
 
-  const handleDeleteSong = async (songId) => {
+  const handleDeleteSong = (songId) => {
     if (!playlist || !songId) return;
+    setPendingDeleteSongId(songId);
+  };
 
-    const confirmed = window.confirm("Permanently delete this song from this playlist?");
-    if (!confirmed) return;
+  const confirmDeleteSong = async () => {
+    const songId = pendingDeleteSongId;
+    setPendingDeleteSongId(null);
+    if (!playlist || !songId) return;
 
     const canPersistCollaborativeEdit = Boolean(authConfig && isDatabaseObjectId(playlist._id));
     if (!canPersistCollaborativeEdit) {
@@ -452,12 +383,14 @@ const PlaylistPage = ({
       const nextSongs = localSongs.filter((song) => song._id !== songId);
       let nextIndex = currentIndex;
       if (!nextSongs.length) nextIndex = 0;
-      
       syncPlaylistSongs(nextSongs, nextIndex);
+      setToastMessage("Song deleted successfully.");
+      setToastType("success");
       await loadPlaylist();
     } catch (error) {
       console.error("Delete song error:", error);
-      alert(error?.response?.data?.message || "Failed to delete song");
+      setToastMessage(error?.response?.data?.message || "Failed to delete song");
+      setToastType("error");
     }
   };
 
@@ -490,7 +423,8 @@ const PlaylistPage = ({
         );
 
         if (existingName || existingFile) {
-          alert("Same song name or same file already exists in this collaborative playlist.");
+          setToastMessage("Same song name or same file already exists in this collaborative playlist.");
+          setToastType("error");
           return;
         }
 
@@ -522,10 +456,11 @@ const PlaylistPage = ({
       console.error("Add song error:", error);
       const message = error?.response?.data?.message || "Failed to add song";
       if (error?.response?.status === 409) {
-        alert(`${message}. Same song name or same audio file already exists in the database.`);
+        setToastMessage(`${message}. Same song name or same audio file already exists in the database.`);
       } else {
-        alert(message);
+        setToastMessage(message);
       }
+      setToastType("error");
     } finally {
       setUploading(false);
     }
@@ -563,7 +498,8 @@ const PlaylistPage = ({
   const handleCopyToPlaylist = async () => {
     if (!copyTargetSong?._id || !selectedTargetPlaylistId) return;
     if (!authConfig) {
-      alert("Please log in again to copy songs.");
+      setToastMessage("Please log in again to copy songs.");
+      setToastType("error");
       return;
     }
 
@@ -576,9 +512,11 @@ const PlaylistPage = ({
       );
 
       if (response.data.duplicate) {
-        alert("That song is already in the selected playlist.");
+        setToastMessage("That song is already in the selected playlist.");
+        setToastType("error");
       } else {
-        alert("Song copied to the selected playlist.");
+        setToastMessage("Song copied to the selected playlist.");
+        setToastType("success");
       }
 
       setShowCopyModal(false);
@@ -586,7 +524,8 @@ const PlaylistPage = ({
       await loadUserPlaylists();
     } catch (error) {
       console.error("Copy song error:", error);
-      alert(error?.response?.data?.message || "Failed to copy song");
+      setToastMessage(error?.response?.data?.message || "Failed to copy song");
+      setToastType("error");
     } finally {
       setCopyingSong(false);
     }
@@ -633,12 +572,7 @@ const PlaylistPage = ({
     if (!playlist || isOwner) return;
 
     if (isCollaborator) {
-      const confirmed = window.confirm("Stop collaborating on this playlist?");
-      if (!confirmed) return;
-      removePlaylistCollaborator(playlist._id, activeUser);
-      setShowContributeModal(false);
-      setPendingRequest(false);
-      alert("You stopped collaborating on this playlist.");
+      setShowLeaveCollabConfirm(true);
       return;
     }
 
@@ -647,6 +581,14 @@ const PlaylistPage = ({
     }
 
     setShowContributeModal(true);
+  };
+
+  const confirmLeaveCollab = () => {
+    setShowLeaveCollabConfirm(false);
+    removePlaylistCollaborator(playlist._id, activeUser);
+    setPendingRequest(false);
+    setToastMessage("You stopped collaborating on this playlist.");
+    setToastType("success");
   };
 
   if (loading) {
@@ -682,15 +624,23 @@ const PlaylistPage = ({
   const normalizedActiveUser = normalizeUsername(activeUser);
   const isOwner = normalizeUsername(playlistOwnerUsername) === normalizedActiveUser;
   const collaboratorUsernames = (playlist?.contributors || []).map((username) => normalizeUsername(username));
-  const isCollaborator =
-    collaboratorUsernames.includes(normalizedActiveUser) ||
-    isPlaylistCollaborator(playlist._id, activeUser);
-  const collabAccessMap = getCollaborationAccessMap();
-  const contributorCount = Array.isArray(playlist?.contributors)
-    ? playlist.contributors.length
-    : (collabAccessMap[playlist?._id] || []).length;
+  const isCollaborator = collaboratorUsernames.includes(normalizedActiveUser);
+  const contributorCount = Array.isArray(playlist?.contributors) ? playlist.contributors.length : 0;
   const isManagedPlaylist = isOwner && contributorCount > 0;
-  const canContribute = isOwner || isCollaborator || canEditPlaylist({ ...playlist, ownerUsername: playlistOwnerUsername }, activeUser);
+  const canContribute = isOwner || isCollaborator;
+
+  // DEBUG - remove after testing
+  console.log("[PlaylistPage Debug]", {
+    activeUser: normalizedActiveUser,
+    playlistOwnerUsername,
+    contributors: playlist?.contributors,
+    collaboratorUsernames,
+    isOwner,
+    isCollaborator,
+    canContribute,
+    authToken: authToken ? "present" : "missing",
+    playlistId: playlist?._id,
+  });
   const shouldShowOwnerLink =
     Boolean(playlistOwnerUsername) &&
     playlistOwnerUsername !== activeUser &&
@@ -1053,6 +1003,44 @@ const PlaylistPage = ({
                 </button>
                 <button type="button" className="btn-primary" onClick={handleSubmitContributionRequest}>
                   Send Request
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {pendingDeleteSongId ? (
+          <div className="modal-overlay" onClick={() => setPendingDeleteSongId(null)}>
+            <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+              <h3>Delete Song</h3>
+              <p className="copy-song-description">
+                Are you sure you want to permanently delete this song from the playlist?
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setPendingDeleteSongId(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" style={{ backgroundColor: "#e74c3c" }} onClick={confirmDeleteSong}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showLeaveCollabConfirm ? (
+          <div className="modal-overlay" onClick={() => setShowLeaveCollabConfirm(false)}>
+            <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+              <h3>Stop Collaborating</h3>
+              <p className="copy-song-description">
+                Are you sure you want to stop collaborating on this playlist?
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowLeaveCollabConfirm(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" style={{ backgroundColor: "#e74c3c" }} onClick={confirmLeaveCollab}>
+                  Leave
                 </button>
               </div>
             </div>

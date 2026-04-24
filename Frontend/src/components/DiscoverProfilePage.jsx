@@ -1,17 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import {
-  dummyDiscoverProfiles,
-  getDummyPlaylistsByUsername,
-} from "../data/discoverDummyData";
 import "./FeaturedHubPage.css";
 import "./PlaylistsPage.css";
 import "./PlaylistPage.css";
 
 const API = "http://localhost:3000";
 
-const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
+const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken, onUserChange }) => {
   const navigate = useNavigate();
   const { username } = useParams();
   const [publicPlaylists, setPublicPlaylists] = useState([]);
@@ -21,18 +17,52 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
   const [likeState, setLikeState] = useState({});
   const [clonedSet, setClonedSet] = useState(new Set());
   const [socialStats, setSocialStats] = useState({ followersCount: 0, followingCount: 0 });
+  const [profileData, setProfileData] = useState({
+    displayName: "",
+    tagline: "",
+    favoriteMoods: [],
+  });
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("");
+
+  // Edit profile state
+  const [editMode, setEditMode] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [displayDraft, setDisplayDraft] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const isOwnProfile = useMemo(
+    () => activeUser && username && activeUser.toLowerCase() === username.toLowerCase(),
+    [activeUser, username]
+  );
+
+  const loadProfileData = useCallback(async () => {
+    if (!username) return;
+    try {
+      const response = await axios.get(`${API}/users/${username}`);
+      setProfileData({
+        displayName: response.data.user.displayName || username,
+        tagline: response.data.user.tagline || "Music enthusiast.",
+        favoriteMoods: response.data.user.favoriteMoods || [],
+      });
+    } catch (error) {
+      console.error("Failed to load profile data:", error);
+      setProfileData({
+        displayName: username,
+        tagline: "Music enthusiast.",
+        favoriteMoods: [],
+      });
+    }
+  }, [username]);
 
   const loadPublicPlaylists = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API}/featured/playlists`);
-      const apiPlaylists = response.data.playlists || [];
-      const dummyPlaylists = getDummyPlaylistsByUsername(username);
-      const playlists = [...dummyPlaylists, ...apiPlaylists].filter(
-        (playlist) => playlist.ownerUsername?.toLowerCase() === username?.toLowerCase()
-      );
+      const response = await axios.get(`${API}/playlists`, {
+        params: { username, scope: "public" },
+      });
+      const playlists = response.data.playlists || [];
       setPublicPlaylists(playlists);
 
       const initialLikes = {};
@@ -44,8 +74,8 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
       });
       setLikeState(initialLikes);
     } catch (error) {
-      console.error("Failed to load public playlists:", error);
-      setPublicPlaylists(getDummyPlaylistsByUsername(username));
+      console.error("Failed to load user playlists:", error);
+      setPublicPlaylists([]);
     } finally {
       setLoading(false);
     }
@@ -64,21 +94,19 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
   );
 
   const loadFriends = useCallback(async () => {
-    if (!activeUser || activeUser === "guest") {
+    if (!activeUser || activeUser === "guest" || !authConfig) {
       setFriends([]);
       return;
     }
 
     try {
-      const response = await axios.get(`${API}/social/friends`, {
-        params: { username: activeUser },
-      });
+      const response = await axios.get(`${API}/social/friends`, authConfig);
       setFriends(response.data.friends || []);
     } catch (error) {
       console.error("Failed to load friends:", error);
       setFriends([]);
     }
-  }, [activeUser]);
+  }, [activeUser, authConfig]);
 
   const loadSocialStats = useCallback(async () => {
     if (!username) return;
@@ -94,17 +122,24 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
   }, [username, authConfig]);
 
   const loadClonedStatus = useCallback(async () => {
-    if (!authConfig) return;
+    if (!authConfig) {
+      setClonedSet(new Set());
+      return;
+    }
     try {
-      const response = await axios.get(`${API}/playlists`, authConfig);
+      const response = await axios.get(`${API}/playlists`, {
+        ...authConfig,
+        params: { username: activeUser, scope: "owned" },
+      });
       const owned = response.data?.playlists || [];
       const clonedIds = new Set(owned.filter((p) => p.clonedFrom).map((p) => p.clonedFrom));
       setClonedSet(clonedIds);
     } catch {
-      // ignore
+      setClonedSet(new Set());
     }
-  }, [authConfig]);
+  }, [authConfig, activeUser]);
 
+  useEffect(() => { loadProfileData(); }, [loadProfileData]);
   useEffect(() => { loadPublicPlaylists(); }, [loadPublicPlaylists]);
   useEffect(() => { loadFriends(); }, [loadFriends]);
   useEffect(() => { loadSocialStats(); }, [loadSocialStats]);
@@ -115,6 +150,12 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
     const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Reset edit mode when navigating to a different profile
+  useEffect(() => {
+    setEditMode(false);
+    setPhotoFile(null);
+  }, [username]);
 
   const handleClonePlaylist = async (event, playlistId) => {
     event.stopPropagation();
@@ -164,16 +205,6 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
     }
   };
 
-  const ownerDisplayName =
-    publicPlaylists[0]?.ownerDisplayName ||
-    dummyDiscoverProfiles[(username || "").toLowerCase()]?.displayName ||
-    username ||
-    "User";
-  const preset = dummyDiscoverProfiles[(username || "").toLowerCase()] || {
-    tagline: `${ownerDisplayName} shares public mood-based playlists in Discover.`,
-    favoriteMoods: ["happy", "neutral", "sad"],
-  };
-
   const isFollowing = useMemo(
     () => friends.some((friend) => friend.username?.toLowerCase() === username?.toLowerCase()),
     [friends, username]
@@ -217,26 +248,95 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
     }
   };
 
+  const handleEditProfile = () => {
+    setUsernameDraft(activeUser || "");
+    setDisplayDraft(profileData.displayName || "");
+    setPhotoFile(null);
+    setEditMode(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setPhotoFile(null);
+  };
+
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
+    if (!usernameDraft.trim() || !authConfig) return;
+    setSaving(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("currentUsername", activeUser);
+      formData.append("username", usernameDraft.trim().toLowerCase());
+      formData.append("displayName", displayDraft.trim());
+      if (photoFile) {
+        formData.append("profilePhoto", photoFile);
+      }
+
+      const response = await axios.put(`${API}/auth/profile`, formData, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (typeof onUserChange === "function") {
+        onUserChange({
+          ...response.data.user,
+          token: response.data.token || authToken,
+        });
+      }
+
+      setEditMode(false);
+      setPhotoFile(null);
+      setToastMessage("Profile updated!");
+      setToastType("success");
+
+      // If username changed, navigate to the new profile URL
+      const newUsername = response.data.user?.username || usernameDraft.trim().toLowerCase();
+      if (newUsername !== username) {
+        navigate(`/discover/users/${newUsername}`, { replace: true });
+      } else {
+        await loadProfileData();
+      }
+    } catch (error) {
+      console.error("Profile save error:", error);
+      setToastMessage(error?.response?.data?.message || "Failed to update profile");
+      setToastType("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="page-shell">
       <div className="discover-profile-page">
         <section className="discover-profile-hero">
           <div className="discover-profile-top">
             <div className="discover-profile-avatar">
-              {(ownerDisplayName || "U").charAt(0).toUpperCase()}
+              {(profileData.displayName || "U").charAt(0).toUpperCase()}
             </div>
 
             <div className="discover-profile-copy">
-              <h2 className="discover-profile-name">{ownerDisplayName}</h2>
-              <p className="discover-profile-description">{preset.tagline}</p>
+              <h2 className="discover-profile-name">{profileData.displayName}</h2>
+              <p className="discover-profile-description">{profileData.tagline}</p>
             </div>
 
             <div className="discover-profile-side">
-              {activeUser?.toLowerCase() !== username?.toLowerCase() ? (
-                <button type="button" className="btn-primary" onClick={handleFollowToggle}>
-                  {isFollowing ? "Unfollow" : "Follow"}
+              {isOwnProfile ? (
+                !editMode ? (
+                  <button type="button" className="btn-secondary" onClick={handleEditProfile}>
+                    <i className="ri-pencil-line" style={{ marginRight: "0.3rem" }}></i> Edit Profile
+                  </button>
+                ) : null
+              ) : (
+                <button 
+                  type="button" 
+                  className={isFollowing ? "btn-secondary" : "btn-primary"} 
+                  style={isFollowing ? { backgroundColor: "#1db954", color: "#000", borderColor: "#1db954" } : {}}
+                  onClick={handleFollowToggle}
+                >
+                  {isFollowing ? "Following" : "Follow"}
                 </button>
-              ) : null}
+              )}
               <div className="discover-profile-social-counts">
                 <span>{socialStats.followersCount} followers</span>
                 <span>{socialStats.followingCount} following</span>
@@ -244,13 +344,44 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
             </div>
           </div>
 
+          {/* Edit Profile Form (inline) */}
+          {isOwnProfile && editMode ? (
+            <form className="profile-form" onSubmit={handleSaveProfile} style={{ marginTop: "0.75rem", borderTop: "1px solid var(--border-default)", paddingTop: "0.75rem" }}>
+              <label>
+                Username
+                <input
+                  type="text"
+                  value={usernameDraft}
+                  onChange={(e) => setUsernameDraft(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Display Name
+                <input
+                  type="text"
+                  value={displayDraft}
+                  onChange={(e) => setDisplayDraft(e.target.value)}
+                />
+              </label>
+              <label>
+                Profile Photo
+                <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0])} />
+              </label>
+              <div className="profile-actions">
+                <button type="button" className="btn-secondary" onClick={handleCancelEdit} disabled={saving}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+              </div>
+            </form>
+          ) : null}
+
           <div className="discover-profile-bottom">
             <div className="discover-profile-stats">
               <span>Public Playlist: {publicPlaylists.length}</span>
             </div>
 
             <div className="discover-profile-moods">
-              {preset.favoriteMoods.map((mood) => (
+              {profileData.favoriteMoods.map((mood) => (
                 <span key={mood} className="playlist-mood-chip">
                   {mood}
                 </span>
@@ -273,7 +404,7 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
           <div className="discover-playlist-grid">
             {loading ? <div className="empty-panel">Loading public playlists...</div> : null}
             {!loading && publicPlaylists.length === 0 ? (
-              <div className="empty-panel">No playlists.</div>
+              <div className="empty-panel">No public playlists yet.</div>
             ) : null}
             {!loading && publicPlaylists.length > 0 && filteredPlaylists.length === 0 ? (
               <div className="empty-panel">No playlists match this search.</div>
@@ -336,7 +467,7 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken }) => {
                             {like.count > 0 ? <span className="discover-like-count">{like.count}</span> : null}
                           </button>
 
-                          {playlist.ownerUsername !== activeUser ? (
+                          {!isOwnProfile ? (
                             <button
                               type="button"
                               className="discover-add-button"

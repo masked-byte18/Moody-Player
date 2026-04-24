@@ -59,8 +59,10 @@ const cleanPlaylist = (playlistDoc) => {
 const isPlaylistOwner = (playlist, username) =>
   (playlist?.ownerUsername || "") === normalizeUsername(username || "");
 
-const isPlaylistContributor = (playlist, username) =>
-  (playlist?.contributors || []).includes(normalizeUsername(username || ""));
+const isPlaylistContributor = (playlist, username) => {
+  const target = normalizeUsername(username);
+  return (playlist?.contributors || []).some((c) => normalizeUsername(c) === target);
+};
 
 const canEditPlaylist = (playlist, username) =>
   isPlaylistOwner(playlist, username) ||
@@ -104,11 +106,27 @@ const imageUpload = multer({
   },
 });
 
+async function checkDuplicateName(name, excludeId = null) {
+  const existingPlaylist = await playlistModel.findOne({ name: new RegExp(`^${name.trim()}$`, 'i') });
+  if (existingPlaylist) {
+    if (excludeId && existingPlaylist._id.toString() === excludeId.toString()) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 router.post("/playlists", requireAuth, imageUpload.single("cover"), async (req, res) => {
   try {
     const { name, description, isFeatured } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Playlist name is required" });
+    }
+    
+    // Check if playlist with same name already exists globally
+    if (await checkDuplicateName(name)) {
+      return res.status(409).json({ message: "This playlist already exists" });
     }
 
     const normalizedOwner = req.user.username;
@@ -193,6 +211,9 @@ router.get("/playlists", async (req, res) => {
       filter.isFeatured = false;
     } else if (normalizedUsername && scope === "owned") {
       filter.ownerUsername = normalizedUsername;
+    } else if (normalizedUsername && scope === "public") {
+      filter.ownerUsername = normalizedUsername;
+      filter.isFeatured = true;
     }
 
     if (query && String(query).trim()) {
@@ -546,6 +567,11 @@ router.put("/playlists/:id", requireAuth, imageUpload.single("cover"), async (re
     const nextDescription = String(req.body?.description || "").trim();
 
     if (nextName) {
+      if (nextName.toLowerCase() !== playlist.name.toLowerCase()) {
+        if (await checkDuplicateName(nextName, playlist._id)) {
+          return res.status(409).json({ message: "This playlist already exists" });
+        }
+      }
       playlist.name = nextName;
     }
     playlist.description = nextDescription;
@@ -603,6 +629,13 @@ router.put("/playlists/:id/publish", requireAuth, async (req, res) => {
     }
 
     const nextFeatured = Boolean(req.body?.isFeatured);
+    
+    if (nextFeatured) {
+      if (await checkDuplicateName(playlist.name, playlist._id)) {
+        return res.status(409).json({ message: "A playlist with this name already exists" });
+      }
+    }
+
     const updates = {
       isFeatured: nextFeatured,
       featuredAt: nextFeatured ? new Date() : null,
@@ -757,6 +790,13 @@ router.delete("/playlists/:id/songs/:songId", requireAuth, async (req, res) => {
     }
 
     const removedSong = await songModel.findById(songId);
+    const songIdStr = String(songId);
+    const hasSong = playlist.songs.some((id) => String(id) === songIdStr);
+
+    if (!hasSong) {
+      return res.status(400).json({ message: "Song is not in this playlist" });
+    }
+
     playlist.songs.pull(songId);
     await playlist.save();
     await logPlaylistActivity({
@@ -1146,6 +1186,34 @@ router.post("/social/unfollow/:targetUsername", requireAuth, async (req, res) =>
   }
 });
 
+router.post("/social/message/:targetUsername", requireAuth, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const targetUsername = normalizeUsername(req.params.targetUsername || "");
+    const { message } = req.body;
+
+    if (!targetUsername) {
+      return res.status(400).json({ message: "target username is required" });
+    }
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({ message: "Message text is required" });
+    }
+
+    await notificationModel.create({
+      recipientUsername: targetUsername,
+      senderUsername: username,
+      senderDisplayName: req.user.displayName || username,
+      type: "request_message",
+      message: String(message).trim(),
+    });
+
+    res.status(200).json({ message: "Message sent" });
+  } catch (error) {
+    console.error("Send message error:", error);
+    res.status(500).json({ message: "Failed to send message" });
+  }
+});
+
 router.post("/playlists/:id/like", requireAuth, async (req, res) => {
   try {
     const playlist = await playlistModel.findById(req.params.id);
@@ -1219,6 +1287,19 @@ router.put("/notifications/:id/read", requireAuth, async (req, res) => {
     res.status(200).json({ message: "Notification marked as read" });
   } catch (error) {
     res.status(500).json({ message: "Failed to mark notification as read" });
+  }
+});
+
+router.put("/notifications/read-all", requireAuth, async (req, res) => {
+  try {
+    await notificationModel.updateMany(
+      { recipientUsername: req.user.username, read: false },
+      { $set: { read: true } }
+    );
+    res.status(200).json({ message: "All notifications marked as read" });
+  } catch (error) {
+    console.error("Failed to mark all as read:", error);
+    res.status(500).json({ message: "Failed to mark all notifications as read" });
   }
 });
 

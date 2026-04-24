@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import {
-  getPlaylistDraftsMap,
-  savePlaylistDraft,
-} from "../utils/collaborationInbox";
 import "./PlaylistsPage.css";
+import "./PlaylistPage.css";
 
 const API = "http://localhost:3000";
 
@@ -32,6 +29,10 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
   const [activeView, setActiveView] = useState("owned");
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [openPlaylistMenuId, setOpenPlaylistMenuId] = useState(null);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const authConfig = useMemo(
     () =>
@@ -139,11 +140,26 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
     return () => window.clearInterval(intervalId);
   }, [activeUser, authConfig, loadPlaylists]);
 
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setOpenPlaylistMenuId(null);
+    };
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
+
   const handleCreatePlaylist = async (event) => {
     event.preventDefault();
     if (!name.trim()) return;
     if (!authConfig) {
-      alert("Please log in again to create playlists.");
+      setToastMessage("Please log in again to create playlists.");
+      setToastType("error");
       return;
     }
 
@@ -169,7 +185,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       setShowModal(false);
     } catch (error) {
       console.error("Create playlist error:", error);
-      alert(error?.response?.data?.message || "Failed to create playlist");
+      setToastMessage(error?.response?.data?.message || "Failed to create playlist");
+      setToastType("error");
     } finally {
       setCreating(false);
     }
@@ -178,7 +195,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
   const handleDeletePlaylist = async (event, playlistId) => {
     event.stopPropagation();
     if (!authConfig) {
-      alert("Please log in again to delete playlists.");
+      setToastMessage("Please log in again to delete playlists.");
+      setToastType("error");
       return;
     }
 
@@ -191,14 +209,16 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       setManagedPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
     } catch (error) {
       console.error("Delete playlist error:", error);
-      alert(error?.response?.data?.message || "Failed to delete playlist");
+      setToastMessage(error?.response?.data?.message || "Failed to delete playlist");
+      setToastType("error");
     }
   };
 
   const handlePublishPlaylist = async (event, playlist) => {
     event.stopPropagation();
     if (!authConfig) {
-      alert("Please log in again to publish playlists.");
+      setToastMessage("Please log in again to publish playlists.");
+      setToastType("error");
       return;
     }
 
@@ -214,7 +234,8 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       await loadPlaylists();
     } catch (error) {
       console.error("Publish playlist error:", error);
-      alert(error?.response?.data?.message || "Failed to update publish status");
+      setToastMessage(error?.response?.data?.message || "Failed to update publish status");
+      setToastType("error");
     }
   };
 
@@ -230,23 +251,43 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
 
     const nextName = renameValue.trim();
     if (activeView === "collab" || renameTarget.isCollabView) {
-      savePlaylistDraft(renameTarget._id, { name: nextName });
+      setToastMessage("Cannot rename collaborative playlists directly from this view.");
+      setToastType("error");
       setRenameTarget(null);
       setRenameValue("");
       return;
     }
 
-    setPlaylists((current) =>
-      current.map((playlist) => (playlist._id === renameTarget._id ? { ...playlist, name: nextName } : playlist))
-    );
-    savePlaylistDraft(renameTarget._id, { name: nextName });
-    setRenameTarget(null);
-    setRenameValue("");
+    if (!authConfig) {
+      setToastMessage("Please log in to rename playlists.");
+      setToastType("error");
+      return;
+    }
+
+    try {
+      const response = await axios.put(
+        `${API}/playlists/${renameTarget._id}`,
+        { name: nextName },
+        authConfig
+      );
+      setPlaylists((current) =>
+        current.map((playlist) => (playlist._id === renameTarget._id ? response.data.playlist : playlist))
+      );
+      setRenameTarget(null);
+      setRenameValue("");
+      setToastMessage("Playlist renamed successfully!");
+      setToastType("success");
+    } catch (error) {
+      console.error("Rename playlist error:", error);
+      setToastMessage(error?.response?.data?.message || "Failed to rename playlist");
+      setToastType("error");
+    }
   };
 
   const handleQuitCollab = (event) => {
     event.stopPropagation();
-    alert("Quit collaboration from UI is currently owner-managed. Ask owner to remove contributor.");
+    setToastMessage("Quit collaboration from UI is currently owner-managed. Ask owner to remove contributor.");
+    setToastType("error");
   };
 
   const handleRemovePendingCollab = async (event, playlist) => {
@@ -261,40 +302,33 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
       await loadPlaylists();
     } catch (error) {
       console.error("Pending request withdraw error:", error);
-      alert(error?.response?.data?.message || "Failed to withdraw request.");
+      setToastMessage(error?.response?.data?.message || "Failed to withdraw request.");
+      setToastType("error");
     }
   };
 
-  const drafts = getPlaylistDraftsMap();
-
-  const demoOwnedDrafts = Object.values(drafts).filter(
-    (draft) => draft.ownerUsername === activeUser && !playlists.some((playlist) => playlist._id === draft._id)
-  );
-  const ownedPlaylists = [...demoOwnedDrafts, ...playlists];
+  const ownedPlaylists = [...playlists];
   const collabPlaylists = [...acceptedCollabPlaylists, ...pendingCollabPlaylists].filter(
     (playlist, index, array) => array.findIndex((item) => item._id === playlist._id) === index
   );
 
-  const managedWithDrafts = managedPlaylists.map((playlist) => {
-    const draft = drafts[playlist._id] || {};
-    return {
-      ...playlist,
-      ...draft,
-      songs: draft.songs || playlist.songs || [],
-    };
-  });
+  const activePlaylists =
+    activeView === "collab" ? collabPlaylists : activeView === "managed" ? managedPlaylists : ownedPlaylists;
 
-  const collabWithDrafts = collabPlaylists.map((playlist) => {
-    const draft = drafts[playlist._id] || {};
-    return {
-      ...playlist,
-      ...draft,
-      songs: draft.songs || playlist.songs || [],
-    };
-  });
+  const visiblePlaylists = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return activePlaylists;
 
-  const visiblePlaylists =
-    activeView === "collab" ? collabWithDrafts : activeView === "managed" ? managedWithDrafts : ownedPlaylists;
+    return activePlaylists.filter((playlist) => {
+      const nameMatch = (playlist.name || "").toLowerCase().includes(query);
+      const descMatch = (playlist.description || "").toLowerCase().includes(query);
+      const songMatch = (playlist.songs || []).some((song) => 
+        (song.title || "").toLowerCase().includes(query) ||
+        (song.artist || "").toLowerCase().includes(query)
+      );
+      return nameMatch || descMatch || songMatch;
+    });
+  }, [activePlaylists, searchTerm]);
 
   return (
     <div className="page-shell">
@@ -331,6 +365,19 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
           >
             Managed
           </button>
+        </div>
+
+        <div className="playlists-search-container" style={{ marginBottom: "2rem" }}>
+          <div className="search-input-wrapper">
+            <i className="ri-search-line search-icon"></i>
+            <input
+              type="text"
+              placeholder={`Search ${activeView === "collab" ? "collabs" : activeView === "managed" ? "managed playlists" : "playlists"}...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
         </div>
 
         <div className="playlist-grid playlist-grid-listing">
@@ -394,96 +441,122 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                 <div className="playlist-actions" onClick={(event) => event.stopPropagation()}>
                   <button
                     type="button"
-                    className="queue-action"
-                    onClick={() =>
-                      navigate(`/playlists/${playlist._id}`, {
-                        state: playlist.isCollabView
-                          ? {
-                              source: "discover",
-                              ownerUsername: playlist.ownerUsername,
-                              ownerDisplayName: playlist.ownerDisplayName,
-                              playlistData: playlist,
-                            }
-                          : undefined,
-                      })
-                    }
-                    aria-label="Open playlist"
-                    title="Open playlist"
+                    className="queue-action mobile-menu-toggle"
+                    onClick={() => setOpenPlaylistMenuId(openPlaylistMenuId === playlist._id ? null : playlist._id)}
+                    aria-label="Playlist options"
                   >
-                    <i className="ri-arrow-right-up-line"></i>
+                    <i className="ri-more-2-fill"></i>
                   </button>
-                  {activeView !== "collab" ? (
+                  <div className={`playlist-actions-group ${openPlaylistMenuId === playlist._id ? "is-open" : ""}`}>
                     <button
                       type="button"
                       className="queue-action"
-                      onClick={(event) => openRenameModal(event, playlist)}
-                      aria-label="Rename playlist"
-                      title="Rename playlist"
+                      onClick={() => {
+                        setOpenPlaylistMenuId(null);
+                        navigate(`/playlists/${playlist._id}`, {
+                          state: playlist.isCollabView
+                            ? {
+                                source: "discover",
+                                ownerUsername: playlist.ownerUsername,
+                                ownerDisplayName: playlist.ownerDisplayName,
+                                playlistData: playlist,
+                              }
+                            : undefined,
+                        });
+                      }}
+                      aria-label="Open playlist"
+                      title="Open playlist"
                     >
-                      <i className="ri-pencil-line"></i>
+                      <i className="ri-arrow-right-up-line"></i>
                     </button>
-                  ) : null}
-                  {activeView !== "collab" ? (
-                    <button
-                      type="button"
-                      className={`queue-action ${playlist.isFeatured ? "is-published" : ""}`}
-                      onClick={(event) => handlePublishPlaylist(event, playlist)}
-                      aria-label={playlist.isFeatured ? "Unpublish playlist" : "Publish playlist"}
-                      title={playlist.isFeatured ? "Unpublish playlist" : "Publish playlist"}
-                    >
-                      <i
-                        className={
-                          activeView === "managed"
-                            ? playlist.isFeatured
-                              ? "ri-eye-off-line"
-                              : "ri-compass-discover-line"
-                            : playlist.isFeatured
-                              ? "ri-eye-off-line"
-                              : "ri-broadcast-line"
-                        }
-                      ></i>
-                    </button>
-                  ) : null}
-
-                  {activeView !== "collab" ? (
-                    <button
-                      type="button"
-                      className="queue-action delete"
-                      onClick={(event) => handleDeletePlaylist(event, playlist._id)}
-                      aria-label="Delete playlist"
-                      title="Delete playlist"
-                    >
-                      <i className="ri-delete-bin-6-line"></i>
-                    </button>
-                  ) : null}
-                  {activeView === "collab" ? (
-                    <>
+                    {activeView !== "collab" ? (
                       <button
                         type="button"
                         className="queue-action"
-                        onClick={(event) => openRenameModal(event, playlist)}
-                        aria-label="Rename locally"
-                        title="Rename locally"
+                        onClick={(event) => {
+                          setOpenPlaylistMenuId(null);
+                          openRenameModal(event, playlist);
+                        }}
+                        aria-label="Rename playlist"
+                        title="Rename playlist"
                       >
                         <i className="ri-pencil-line"></i>
                       </button>
-                      {playlist.collabStatus === "pending" ? (
-                        <span className="queue-action" title="Pending request is shown in badge">
-                          <i className="ri-time-line"></i>
-                        </span>
-                      ) : (
+                    ) : null}
+                    {activeView !== "collab" ? (
+                      <button
+                        type="button"
+                        className={`queue-action ${playlist.isFeatured ? "is-published" : ""}`}
+                        onClick={(event) => {
+                          setOpenPlaylistMenuId(null);
+                          handlePublishPlaylist(event, playlist);
+                        }}
+                        aria-label={playlist.isFeatured ? "Unpublish playlist" : "Publish playlist"}
+                        title={playlist.isFeatured ? "Unpublish playlist" : "Publish playlist"}
+                      >
+                        <i
+                          className={
+                            activeView === "managed"
+                              ? playlist.isFeatured
+                                ? "ri-eye-off-line"
+                                : "ri-compass-discover-line"
+                              : playlist.isFeatured
+                                ? "ri-eye-off-line"
+                                : "ri-broadcast-line"
+                          }
+                        ></i>
+                      </button>
+                    ) : null}
+
+                    {activeView !== "collab" ? (
+                      <button
+                        type="button"
+                        className="queue-action delete"
+                        onClick={(event) => {
+                          setOpenPlaylistMenuId(null);
+                          handleDeletePlaylist(event, playlist._id);
+                        }}
+                        aria-label="Delete playlist"
+                        title="Delete playlist"
+                      >
+                        <i className="ri-delete-bin-6-line"></i>
+                      </button>
+                    ) : null}
+                    {activeView === "collab" ? (
+                      <>
                         <button
                           type="button"
-                          className="queue-action delete"
-                          onClick={(event) => handleQuitCollab(event, playlist)}
-                          aria-label="Quit contribution"
-                          title="Quit contribution"
+                          className="queue-action"
+                          onClick={(event) => {
+                            setOpenPlaylistMenuId(null);
+                            openRenameModal(event, playlist);
+                          }}
+                          aria-label="Rename locally"
+                          title="Rename locally"
                         >
-                          <i className="ri-logout-circle-r-line"></i>
+                          <i className="ri-pencil-line"></i>
                         </button>
-                      )}
-                    </>
-                  ) : null}
+                        {playlist.collabStatus === "pending" ? (
+                          <span className="queue-action" title="Pending request is shown in badge">
+                            <i className="ri-time-line"></i>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="queue-action delete"
+                            onClick={(event) => {
+                              setOpenPlaylistMenuId(null);
+                              handleQuitCollab(event, playlist);
+                            }}
+                            aria-label="Quit contribution"
+                            title="Quit contribution"
+                          >
+                            <i className="ri-logout-circle-r-line"></i>
+                          </button>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
@@ -559,6 +632,12 @@ const PlaylistsPage = ({ activeUser, activeDisplayName, authToken }) => {
                 </div>
               </form>
             </div>
+          </div>
+        ) : null}
+
+        {toastMessage ? (
+          <div className={`inline-toast ${toastType === "error" ? "inline-toast-error" : "inline-toast-success"}`}>
+            {toastMessage}
           </div>
         ) : null}
       </div>

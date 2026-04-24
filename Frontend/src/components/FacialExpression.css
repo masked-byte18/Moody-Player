@@ -1,34 +1,27 @@
+/* ── Face Mood Detection ── */
 .mood-element {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 
 .mood-element button {
   width: 100%;
-  padding: var(--space-lg) var(--space-xl);
-  border-radius: var(--radius-lg);
+  padding: 0.82rem var(--space-lg);
+  border-radius: var(--radius-md);
   border: none;
   background: var(--primary-gradient);
   color: #111214;
-  font-size: var(--text-md);
+  font-size: 0.88rem;
   font-weight: 800;
   cursor: pointer;
-  transition: all var(--transition-slow);
-  box-shadow: var(--shadow-sm);
-  letter-spacing: 0.3px;
-}
-
-.mood-element button:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  background: var(--primary-gradient-reverse);
+  transition: opacity var(--transition-base);
 }
 
 .mood-element button:active {
-  transform: translateY(-1px);
+  opacity: 0.9;
 }
 
 .user-video-feed {
@@ -36,11 +29,21 @@
   aspect-ratio: 16/9;
   border-radius: var(--radius-lg);
   object-fit: cover;
-  border: 2px solid var(--border-default);
-  box-shadow: var(--shadow-lg);
-  transition: border-color var(--transition-base);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-sm);
 }
 
-.user-video-feed:hover {
-  border-color: var(--border-hover);
+@media (min-width: 768px) {
+  .mood-element {
+    gap: var(--space-lg);
+  }
+
+  .mood-element button {
+    padding: var(--space-lg) var(--space-xl);
+    font-size: var(--text-md);
+  }
+
+  .mood-element button:hover {
+    opacity: 0.9;
+  }
 }
