@@ -311,13 +311,15 @@ const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken, onUserC
       <div className="discover-profile-page">
         <section className="discover-profile-hero">
           <div className="discover-profile-top">
-            <div className="discover-profile-avatar">
-              {(profileData.displayName || "U").charAt(0).toUpperCase()}
-            </div>
+            <div className="discover-profile-main">
+              <div className="discover-profile-avatar">
+                {(profileData.displayName || "U").charAt(0).toUpperCase()}
+              </div>
 
-            <div className="discover-profile-copy">
-              <h2 className="discover-profile-name">{profileData.displayName}</h2>
-              <p className="discover-profile-description">{profileData.tagline}</p>
+              <div className="discover-profile-copy">
+                <h2 className="discover-profile-name">{profileData.displayName}</h2>
+                <p className="discover-profile-description">{profileData.tagline}</p>
+              </div>
             </div>
 
             <div className="discover-profile-side">
