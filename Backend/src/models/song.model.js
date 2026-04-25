@@ -37,6 +37,8 @@ const songSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    likedBy: [{ type: String, lowercase: true, trim: true }],
+    likesCount: { type: Number, default: 0, index: true },
     ownerUserId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "userProfile",

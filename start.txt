@@ -1,4 +1,0 @@
-bro if i am clicking in the upload playlist option then it showuld show my all playlist name(title) so that i can add that to that title of the playlist
-
-
-Why the other user not able to delete the song from the owner playlist in the collab mode

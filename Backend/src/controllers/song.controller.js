@@ -30,6 +30,38 @@ const createSong = async (req, res) => {
   }
 };
 
+const createExternalSong = async (req, res) => {
+  try {
+    const { title, artist, audio, mood } = req.body;
+
+    if (!audio) {
+      return res.status(400).json({ message: "Audio URL is required" });
+    }
+
+    const result = await songService.createExternalSongRecord({
+      title,
+      artist,
+      audio,
+      mood,
+      user: req.user,
+    });
+
+    if (result.error) {
+      return res
+        .status(result.error.status)
+        .json({ message: result.error.message, song: result.error.song });
+    }
+
+    return res.status(201).json({
+      message: "External song registered successfully",
+      song: result.song,
+    });
+  } catch (error) {
+    console.error("External song create error:", error);
+    return res.status(500).json({ message: "Registration failed" });
+  }
+};
+
 const getSongs = async (req, res) => {
   try {
     const songs = await songService.listSongs({
@@ -93,10 +125,48 @@ const deleteSong = async (req, res) => {
   }
 };
 
+const toggleLike = async (req, res) => {
+  try {
+    const result = await songService.toggleSongLike(req.params.id, req.user.username);
+    if (result.error) {
+      return res.status(result.error.status).json({ message: result.error.message });
+    }
+    return res.status(200).json({ isLiked: result.isLiked, song: result.song });
+  } catch (error) {
+    console.error("Toggle like error:", error);
+    return res.status(500).json({ message: "Failed to toggle like" });
+  }
+};
+
+const getTopLiked = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const result = await songService.getTopLikedSongs(limit);
+    return res.status(200).json({ songs: result.songs });
+  } catch (error) {
+    console.error("Get top liked error:", error);
+    return res.status(500).json({ message: "Failed to fetch top liked songs" });
+  }
+};
+
+const getMyLikes = async (req, res) => {
+  try {
+    const result = await songService.getMyLikedSongs(req.user.username);
+    return res.status(200).json({ songs: result.songs });
+  } catch (error) {
+    console.error("Get my likes error:", error);
+    return res.status(500).json({ message: "Failed to fetch your liked songs" });
+  }
+};
+
 module.exports = {
   createSong,
   getSongs,
   getMySongs,
   getSongsByMood,
   deleteSong,
+  createExternalSong,
+  toggleLike,
+  getTopLiked,
+  getMyLikes,
 };

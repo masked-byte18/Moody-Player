@@ -8,6 +8,7 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
   const [fileName, setFileName] = useState("");
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
+  const [manualMood, setManualMood] = useState("");
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -17,7 +18,9 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
     setUploading(true);
 
     try {
-      const mood = await analyzeAudioMood(file);
+      const detectedMood = await analyzeAudioMood(file);
+      const moodToUse = manualMood || detectedMood;
+      
       const formData = new FormData();
       const resolvedTitle = title.trim() || deriveTitleFromFile(file);
       const resolvedArtist = artist.trim() || "Unknown";
@@ -28,21 +31,21 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
           _id: "",
           title: resolvedTitle,
           artist: resolvedArtist,
-          mood,
+          mood: moodToUse,
           audio: URL.createObjectURL(file),
           isLocalTemp: true,
         };
         if (onSongAdded) {
           onSongAdded(localTempSong);
         }
-        alert(`Guest mode: added temporary song. Mood: ${mood}`);
+        alert(`Guest mode: added temporary song. Mood: ${moodToUse} ${manualMood ? "(Manual)" : "(Detected)"}`);
         return;
       }
 
       formData.append("audio", file);
       formData.append("title", resolvedTitle);
       formData.append("artist", resolvedArtist);
-      formData.append("mood", mood);
+      formData.append("mood", moodToUse);
 
       const response = await axios.post("http://localhost:3000/songs", formData, {
         headers: {
@@ -53,7 +56,7 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
         onSongAdded(response.data.song);
       }
 
-      alert(`Song analyzed and saved! Mood: ${mood}`);
+      alert(`Song saved! Mood: ${moodToUse} ${manualMood ? "(Manual)" : "(Detected)"}`);
     } catch (error) {
       if (error?.response?.status === 409) {
         const existingSong = error?.response?.data?.song;
@@ -69,6 +72,7 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
       setFileName("");
       setTitle("");
       setArtist("");
+      setManualMood("");
       e.target.value = "";
     }
   };
@@ -91,6 +95,21 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
             onChange={(e) => setArtist(e.target.value)}
             disabled={uploading}
           />
+          <select 
+            value={manualMood} 
+            onChange={(e) => setManualMood(e.target.value)}
+            disabled={uploading}
+            className="manual-mood-select"
+          >
+            <option value="">Auto-Detect Mood</option>
+            <option value="happy">Happy</option>
+            <option value="sad">Sad</option>
+            <option value="energetic">Energetic</option>
+            <option value="calm">Calm</option>
+            <option value="romantic">Romantic</option>
+            <option value="angry">Angry</option>
+            <option value="chill">Chill</option>
+          </select>
         </div>
         <input
           type="file"

@@ -1303,4 +1303,46 @@ router.put("/notifications/read-all", requireAuth, async (req, res) => {
   }
 });
 
+router.put("/:id/songs/reorder", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { songIds } = req.body;
+    
+    if (!Array.isArray(songIds)) {
+      return res.status(400).json({ message: "songIds array is required" });
+    }
+
+    const playlist = await playlistModel.findById(id).populate("songs");
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    const activeUser = normalizeUsername(req.user.username);
+    const ownerUser = normalizeUsername(playlist.ownerUsername);
+    const collaborators = (playlist.contributors || []).map((u) => normalizeUsername(u));
+    const canContribute = activeUser === ownerUser || collaborators.includes(activeUser);
+
+    if (!canContribute) {
+      return res.status(403).json({ message: "Not authorized to reorder this playlist" });
+    }
+
+    // Reorder the populated songs array based on songIds
+    const nextSongs = songIds.map(sid => playlist.songs.find(s => s._id.toString() === sid)).filter(Boolean);
+    
+    if (nextSongs.length !== playlist.songs.length) {
+       // if there is a mismatch (e.g. song deleted concurrently), append the missing ones
+       const remaining = playlist.songs.filter(s => !songIds.includes(s._id.toString()));
+       nextSongs.push(...remaining);
+    }
+
+    playlist.songs = nextSongs.map(s => s._id);
+    await playlist.save();
+
+    res.status(200).json({ message: "Playlist reordered successfully" });
+  } catch (error) {
+    console.error("Failed to reorder playlist:", error);
+    res.status(500).json({ message: "Failed to reorder playlist" });
+  }
+});
+
 module.exports = router;

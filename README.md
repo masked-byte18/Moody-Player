@@ -1,281 +1,228 @@
-# 🎵 Moody Player  
-## AI-Powered Music Ecosystem Based on Your Mood
+<div align="center">
+  <img src="https://img.shields.io/badge/Moody_Player-000000?style=for-the-badge&logo=music&logoColor=white" alt="Moody Player" width="300" />
+  <h1>🎵 Moody Player</h1>
+  <p><b>Next-Generation Mood-Based Audio Discovery & Collaborative Listening</b></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/AI-Emotion%20Detection-purple?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/React-19-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Node.js-Backend-green?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/MongoDB-Database-darkgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/WASM-Essentia-orange?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/ImageKit-CDN-red?style=for-the-badge" />
-</p>
-
-<p align="center">
-  <strong>Detect Emotion → Analyze Music → Curate Playlists → Control Experience</strong>
-</p>
+  [![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)](#)
+  [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white)](#)
+  [![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white)](#)
+  [![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=flat-square&logo=mongodb&logoColor=white)](#)
+  [![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)](#)
+</div>
 
 ---
 
-# 🚀 Overview
+## 📖 Overview
 
-Moody Player is a full-stack AI-powered music platform that intelligently connects:
+**Moody Player** is a modern, full-stack music streaming and audio curation platform that blends intelligent mood-based listening with robust social collaboration. 
 
-- 🎭 Real-Time Facial Emotion Detection  
-- 🎧 WASM-Based Audio Feature Intelligence  
-- 📚 Advanced Playlist & Queue Management  
-- 🔁 Smart Playback & Loop Controls  
-- ☁️ Cloud File Storage  
-- 💾 Persistent MongoDB Architecture  
-- 📱 Fully Responsive Split-Screen UI  
-
-This is not just a music player.  
-It is a **mood-driven music engine designed with real-world architecture principles.**
+Designed with a premium dark-mode aesthetic and dynamic micro-animations, the application offers an infinite "Magic Shuffle", independent user-specific mood queues, real-time collaboration on playlists, and an integrated social graph.
 
 ---
 
-# 📊 Mood Intelligence Dashboard
+## 🏗 Architecture Execution Map
 
-Moody Player classifies songs into five emotional categories using AI-powered audio and facial analysis.
-
-## 🎵 Mood Distribution
+The system uses a decoupled client-server architecture with state-driven dynamic routing, centralized audio streaming, and an intelligent global queue manager.
 
 ```mermaid
-pie
-    title Mood Distribution
-    "Happy" : 30
-    "Sad" : 18
-    "Neutral" : 22
-    "Angry" : 12
-    "Surprised" : 10
+graph TD
+    %% Frontend Layer
+    subgraph Frontend [React Vite Client]
+        A[UI Components] --> B(Global State: App.jsx)
+        B --> |Queue Manager| C[PlayerFooter]
+        B --> |Auth State| D[Auth Guard]
+        
+        %% Pages
+        D --> E[Discover Page]
+        D --> F[Explore Page: Jamendo API]
+        D --> G[Mood Detector]
+        D --> H[Collab Playlists]
+    end
+
+    %% Backend Layer
+    subgraph Backend [Node.js + Express Server]
+        I[Auth Middleware] --> J[Song Routes]
+        I --> K[Playlist Routes]
+        I --> L[Collab Routes]
+        
+        %% Services
+        J --> M(Song Service)
+        K --> N(Playlist Service)
+        L --> O(Social Service)
+        
+        M -.-> |File Buffer| P[Firebase Storage]
+    end
+
+    %% Database Layer
+    subgraph Database [MongoDB Cloud]
+        Q[(Users Collection)]
+        R[(Songs Collection)]
+        S[(Playlists Collection)]
+        T[(Notifications Collection)]
+    end
+
+    %% Connections
+    Frontend <==REST API==> Backend
+    M ==> R
+    N ==> S
+    O ==> Q
+    O ==> T
+    P -.-> |Audio URL| C
 ```
 
 ---
 
+## ✨ Core Features & Analytics
 
+### 🧠 Intelligent Mood Queue
+- **Personalized Isolation:** Every user has a strictly isolated `moodLibrary` anchored to their profile.
+- **Duplicate Handling:** Uploading a track that already exists in the global DB automatically aliases the track to the user's permanent queue, preventing storage bloat while persisting across sessions.
+- **Auto-Detection:** Analyzes audio files on upload to dynamically assign moods (Happy, Sad, Chill, Energetic).
 
-# 🔄 Application Workflow
+### 🌍 Explore & Magic Shuffle
+- **Jamendo API Integration:** Dynamically fetches royalty-free music.
+- **Infinite Magic Shuffle:** An algorithm that auto-feeds the global queue with random tracks, creating an endless listening loop.
+- **Global Likes Sync:** Features a highly optimized state unification system. Likes are mapped using a normalized URL hashing system, perfectly aligning database entries with real-time UI interactions across the app.
 
-This section explains how Moody Player operates from user interaction to system response.
+### 🤝 Real-Time Collaboration & Social Graph
+- **Role-Based Access Control:** Playlists support `owners` and `contributors`.
+- **Social Graph:** Fully functional "Following" and "Follower" ecosystem.
+- **Real-Time Notifications:** In-app notification center that dynamically updates when users send collaboration invites or follow requests.
 
-## 🎵 Song Upload Workflow
+---
+
+## 📊 Data Flow Analytics
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Frontend
-    participant Essentia
-    participant Backend
-    participant MongoDB
-    participant ImageKit
-
-    User->>Frontend: Upload Song
-    Frontend->>Essentia: Extract Audio Features
-    Essentia-->>Frontend: Return BPM & Energy Data
-    Frontend->>Backend: Send Song Metadata
-    Backend->>MongoDB: Store Song Record
-    Backend->>ImageKit: Upload Audio File
-    Backend-->>Frontend: Confirm Upload
-```
-
-**Process Summary:**
-1. User uploads audio file.
-2. Essentia.js extracts audio features in-browser.
-3. Mood classification assigned.
-4. Metadata saved in MongoDB.
-5. Audio file stored securely on ImageKit CDN.
-
----
-
-## 🎭 Mood Detection Workflow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant FaceAPI
-    participant Backend
+    participant Jamendo API
+    participant Express API
     participant MongoDB
 
-    User->>Frontend: Click Detect Mood
-    Frontend->>FaceAPI: Capture Facial Expression
-    FaceAPI-->>Frontend: Return Emotion
-    Frontend->>Backend: Fetch Songs by Mood
-    Backend->>MongoDB: Query Songs
-    MongoDB-->>Frontend: Return Matching Songs
+    User->>Frontend: Clicks "Like" on Explore Page
+    Frontend->>Frontend: Normalize URL (Strip Session Tokens)
+    
+    alt If external track not in DB
+        Frontend->>Express API: POST /songs/external (Sync to DB)
+        Express API->>MongoDB: Create Song Document
+        MongoDB-->>Express API: Return Document ID
+        Express API-->>Frontend: 201 Created
+    end
+    
+    Frontend->>Express API: POST /songs/{id}/like
+    Express API->>MongoDB: Update `likedBy` Array & `likesCount`
+    MongoDB-->>Express API: Aggregated Count
+    Express API-->>Frontend: Updated State
+    Frontend->>User: UI Updates Instantly (Dynamic Count)
 ```
-
-**Process Summary:**
-1. Webcam activates.
-2. face-api.js detects emotion.
-3. System fetches songs matching mood.
-4. Playlist auto-populates.
 
 ---
 
-# 🧠 System Architecture
+## ⚙️ Component Lifecycle (The Player Engine)
+
+The core audio engine resides in `PlayerFooter.jsx`, orchestrated by state passed down from `App.jsx`.
 
 ```mermaid
-flowchart LR
-    User -->|Upload Song| Frontend
-    Frontend -->|Audio Analysis| EssentiaJS
-    EssentiaJS -->|Mood Classification| Backend
-    Backend -->|Save Metadata| MongoDB
-    Backend -->|Upload Audio| ImageKit
-
-    User -->|Detect Mood| FaceAPI
-    FaceAPI -->|Emotion Result| Frontend
-    Frontend -->|Fetch Songs| Backend
-    Backend --> MongoDB
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> LoadingQueue: User clicks Play/Shuffle
+    LoadingQueue --> Playing: Track Loaded
+    
+    Playing --> Seeking: User Drags Timeline
+    Seeking --> Playing: Drag Released
+    
+    Playing --> EvaluatingQueue: Track Ends
+    
+    state EvaluatingQueue {
+        [*] --> CheckType
+        CheckType --> IsPlaylist: type === 'playlist'
+        CheckType --> IsMagicShuffle: type === 'explore_shuffle'
+        
+        IsPlaylist --> StopPlaying: End of Playlist Reached
+        IsPlaylist --> NextSequential: Has Next Track
+        
+        IsMagicShuffle --> PickRandomIndex: Infinite Loop
+    }
+    
+    NextSequential --> Playing
+    PickRandomIndex --> Playing
 ```
 
 ---
 
-# 🎛 Core Features
+## 💻 Tech Stack Breakdown
 
-## 🎭 Real-Time Mood Detection
-- Webcam-based facial recognition
-- Emotion confidence scoring
-- Instant mood-based recommendation engine
+### Frontend Environment
+- **Core:** React 18, Vite
+- **Styling:** Vanilla CSS (CSS Variables, Flexbox/Grid, Glassmorphism, Responsive Media Queries)
+- **State Management:** React Hooks (`useState`, `useEffect`) lifted to root.
+- **Audio API:** Native HTML5 `Audio` element dynamically controlled via React Refs.
+- **Icons:** Remix Icons
 
----
-
-## 🎧 Audio Intelligence (WASM)
-- BPM detection
-- Loudness measurement
-- Spectral centroid mapping
-- Energy scoring
-- Automatic mood tagging
-
----
-
-## 📚 Advanced Playlist Management
-- Unlimited playlist creation
-- Drag-and-drop queue reordering
-- Cross-playlist copy system
-- Duplicate prevention logic
-- Real-time synchronization
+### Backend & Infrastructure
+- **Server:** Node.js, Express.js
+- **Database:** MongoDB (Mongoose ODM)
+- **Authentication:** JWT (JSON Web Tokens), bcrypt
+- **Storage:** Firebase/GCP Storage for audio blobs, Jamendo storage for external CDNs.
+- **Middleware:** Multer (Memory Storage for Buffer Hash generation), Custom Auth Guards.
 
 ---
 
-## 🔁 Enhanced Playback Controls
+## 🚀 Local Setup Instructions
 
-| Mode | Function |
-|------|----------|
-| Normal | Sequential playback |
-| Loop All | Repeat entire playlist |
-| Loop One | Repeat single track |
+### Prerequisites
+- Node.js (v18+)
+- MongoDB connection string
+- Jamendo API Client ID
 
-Includes:
-- Seekable progress bar
-- Volume control
-- Now playing section
-- Auto next-track transition
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/moody-player.git
+cd moody-player
+```
 
----
-
-
-
-# 📱 Responsive Design Optimization
-
-- Mobile-first layout
-- Adaptive split-screen
-- Touch-friendly UI
-- Zero layout shift structure
-
----
-
-# ⚡ Tech Stack
-
-## Frontend
-- React 19 + Vite
-- face-api.js
-- Essentia.js (WASM)
-- Axios
-- Modern CSS3
-
-## Backend
-- Node.js
-- Express.js
-- MongoDB + Mongoose
-- Multer
-- ImageKit CDN
-
----
-
-# 📦 Installation & Setup
-
-## Backend
-
+### 2. Configure Backend
 ```bash
 cd Backend
+# Install dependencies from package.json (versions specified in req.txt)
 npm install
-
-# Create .env file
-# MONGODB_URI=
-# IMAGEKIT_PUBLIC_KEY=
-# IMAGEKIT_PRIVATE_KEY=
-# IMAGEKIT_URL_ENDPOINT=
-
-npx nodemon server.js
 ```
-
-Backend runs on:
+Create a `.env` file in the `Backend` directory with the following variables:
+```env
+PORT=3000
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_super_secret_jwt_key
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+FIREBASE_PROJECT_ID=your_firebase_project_id
+FIREBASE_PRIVATE_KEY="your_firebase_private_key"
+FIREBASE_CLIENT_EMAIL=your_firebase_client_email
 ```
-http://localhost:3000
-```
-
----
-
-## Frontend
-
+Start the backend server:
 ```bash
-cd Frontend
-npm install
 npm run dev
 ```
 
-Frontend runs on:
+### 3. Configure Frontend
+```bash
+cd ../Frontend
+# Install dependencies from package.json (versions specified in req.txt)
+npm install
 ```
-http://localhost:5173
+Create a `.env` file in the `Frontend` directory with the following variables:
+```env
+VITE_JAMENDO_CLIENT_ID=your_jamendo_api_client_id
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
+```
+Start the frontend development server:
+```bash
+npm run dev
 ```
 
 ---
 
-# 🔌 API Overview
-
-| Method | Endpoint | Purpose |
-|--------|----------|----------|
-| POST | /playlists | Create playlist |
-| POST | /playlists/:id/songs/upload | Upload song |
-| POST | /playlists/:targetId/songs/transfer | Copy song |
-| PUT | /playlists/:id/songs/reorder | Reorder queue |
-| GET | /songs/mood/:mood | Fetch songs by mood |
-| DELETE | /songs/:id | Delete song |
-
----
-
-# 🏆 Why This Project Stands Out
-
-Moody Player demonstrates:
-
-- Real-time AI integration in web apps  
-- WASM-powered audio intelligence  
-- Complex drag-and-drop engineering  
-- Full-stack CRUD architecture  
-- Cloud-based file handling  
-- Database relationship management  
-- Responsive UI engineering  
-- Production-level workflow design  
-
-It merges **Machine Learning + UX + Full-Stack Engineering** into a cohesive ecosystem.
-
----
-
-# ❤️ Final Note
-
-Music feels different when it understands you.
-
-Moody Player transforms emotion into sound —  
-turning your face into your playlist.
-
-⭐ If this project matches your vibe, consider starring the repository.
+<div align="center">
+  <p>Built with ❤️ by Raj</p>
+</div>

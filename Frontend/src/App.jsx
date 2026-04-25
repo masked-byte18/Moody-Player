@@ -12,6 +12,7 @@ import PlayerFooter from "./components/PlayerFooter";
 import Sidebar from "./components/Sidebar";
 import ThemeSwitcher from "./components/ThemeSwitcher";
 import LoginPage from "./components/LoginPage";
+import ExploreSongsPage from "./components/ExploreSongsPage";
 import SignupPage from "./components/SignupPage";
 
 function App() {
@@ -52,14 +53,14 @@ function App() {
       }
 
       try {
-        const response = await fetch("http://localhost:3000/songs/mine", {
+        const response = await fetch("http://localhost:3000/mood-library", {
           headers: {
             Authorization: `Bearer ${userState.token}`,
           },
         });
 
         if (!response.ok) {
-          throw new Error("Failed to fetch mood queue");
+          throw new Error("Failed to fetch mood library");
         }
 
         const data = await response.json();
@@ -108,7 +109,23 @@ function App() {
     startQueue(songs, { type: "mood", playlistId: null }, 0);
   };
 
-  const handleSongAdded = (song) => {
+  const handleSongAdded = async (song) => {
+    // Save to backend mood library so it persists across reloads for this user
+    if (userState.token && userState.username !== "guest" && song._id) {
+      try {
+        await fetch("http://localhost:3000/mood-library", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userState.token}`,
+          },
+          body: JSON.stringify({ songId: song._id }),
+        });
+      } catch (err) {
+        console.error("Failed to add song to mood library:", err);
+      }
+    }
+
     const nextLibrary = [...moodLibrary, song];
     setMoodLibrary(nextLibrary);
     setMoodSongs(nextLibrary);
@@ -131,23 +148,20 @@ function App() {
 
   const handleDeleteFromMood = async ({ songId, index }) => {
     if (!songId) return;
-    const confirmed = window.confirm("Delete this song permanently?");
+    const confirmed = window.confirm("Remove this song from your mood queue?");
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`http://localhost:3000/songs/${songId}`, {
-        method: "DELETE",
-        headers: userState.token
-          ? {
-              Authorization: `Bearer ${userState.token}`,
-            }
-          : {},
-      });
+      if (userState.token && userState.username !== "guest") {
+        const response = await fetch(`http://localhost:3000/mood-library/${songId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${userState.token}` },
+        });
 
-      if (!response.ok) {
-        throw new Error("Delete failed");
+        if (!response.ok) {
+          throw new Error("Remove from mood library failed");
+        }
       }
-
       const nextQueue = moodSongs.filter((_, i) => i !== index);
       setMoodLibrary(nextQueue);
       let nextIndex = currentIndex;
@@ -162,6 +176,30 @@ function App() {
     } catch (error) {
       console.error("Delete error:", error);
       alert("Failed to delete song.");
+    }
+  };
+
+  const handleReorderMood = async (nextQueue, nextIndex) => {
+    setMoodLibrary(nextQueue);
+    setMoodSongs(nextQueue);
+    if (queueSource.type === "mood") {
+      setQueue(nextQueue);
+      setCurrentIndex(nextIndex);
+    }
+
+    if (userState.token && userState.username !== "guest") {
+      try {
+        await fetch(`http://localhost:3000/mood-library/reorder`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userState.token}`,
+          },
+          body: JSON.stringify({ songIds: nextQueue.map((s) => s._id).filter(Boolean) }),
+        });
+      } catch (err) {
+        console.error("Failed to reorder mood queue:", err);
+      }
     }
   };
 
@@ -183,13 +221,34 @@ function App() {
 
   const handleNext = () => {
     if (!queue.length) return;
-    const nextIndex = (currentIndex + 1) % queue.length;
-    setCurrentIndex(nextIndex);
-    setIsPlaying(true);
+
+    if (queueSource?.type === "explore_shuffle") {
+      const nextIndex = Math.floor(Math.random() * queue.length);
+      setCurrentIndex(nextIndex);
+      setIsPlaying(true);
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= queue.length) {
+      setCurrentIndex(0);
+      setIsPlaying(false);
+    } else {
+      setCurrentIndex(nextIndex);
+      setIsPlaying(true);
+    }
   };
 
   const handlePrevious = () => {
     if (!queue.length) return;
+
+    if (queueSource?.type === "explore_shuffle") {
+      const prevIndex = Math.floor(Math.random() * queue.length);
+      setCurrentIndex(prevIndex);
+      setIsPlaying(true);
+      return;
+    }
+
     setCurrentIndex((prev) => (prev - 1 + queue.length) % queue.length);
     setIsPlaying(true);
   };
@@ -242,6 +301,14 @@ function App() {
     localStorage.setItem("moody-profile-photo", "");
     localStorage.removeItem("moody-auth-token");
     setMobileSidebarOpen(false);
+
+    // Clear player queue on logout
+    setQueue([]);
+    setCurrentIndex(0);
+    setIsPlaying(false);
+    setQueueSource({ type: null, playlistId: null });
+    setMoodLibrary([]);
+    setMoodSongs([]);
   };
 
   const handleThemeToggle = () => {
@@ -297,6 +364,7 @@ function App() {
               onPlayFromMood={handlePlayFromMood}
               onRemoveFromMood={handleRemoveFromMood}
               onDeleteFromMood={handleDeleteFromMood}
+              onReorderMood={handleReorderMood}
               currentIndex={queueSource.type === "mood" ? currentIndex : -1}
               isPlaying={queueSource.type === "mood" ? isPlaying : false}
               queue={queue}
@@ -399,6 +467,16 @@ function App() {
           }
         />
         <Route
+          path="/explore"
+          element={
+            <ExploreSongsPage
+              activeUser={userState.username}
+              authToken={userState.token}
+              startQueue={startQueue}
+            />
+          }
+        />
+        <Route
           path="/notifications"
           element={
             isAuthenticated ? (
@@ -429,3 +507,4 @@ function App() {
 }
 
 export default App;
+

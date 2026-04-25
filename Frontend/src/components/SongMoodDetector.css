@@ -36,9 +36,34 @@
   border-color: var(--border-active);
 }
 
-.song-metadata input:disabled {
+.song-metadata input:disabled,
+.manual-mood-select:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.manual-mood-select {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: border-color var(--transition-base);
+  cursor: pointer;
+  appearance: none;
+}
+
+.manual-mood-select:focus {
+  outline: none;
+  border-color: var(--border-active);
+}
+
+.manual-mood-select option {
+  background: #1a1c1f;
+  color: #f7f8fa;
 }
 
 /* ── Upload Label ── */

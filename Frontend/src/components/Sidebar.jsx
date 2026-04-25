@@ -286,6 +286,9 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         <NavLink to="/discover" onClick={handleCloseMobile}>
           <i className="ri-compass-3-line"></i> Discover
         </NavLink>
+        <NavLink to="/explore" onClick={handleCloseMobile}>
+          <i className="ri-earth-line"></i> Explore Songs
+        </NavLink>
       </nav>
 
       <div className="sidebar-bottom">

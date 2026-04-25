@@ -24,6 +24,7 @@ const MoodPage = ({
   activeUser,
   authToken,
   moodLibrary,
+  onReorderMood,
 }) => {
   const isMoodQueue = queueSource?.type === "mood";
   const currentSong = isMoodQueue && queue[currentIndex];
@@ -135,6 +136,7 @@ const MoodPage = ({
               onPlayFromQueue={onPlayFromMood}
               onRemove={onRemoveFromMood}
               onDelete={onDeleteFromMood}
+              onReorder={onReorderMood}
             />
           </div>
         </div>

@@ -50,6 +50,7 @@ const userProfileSchema = new mongoose.Schema(
     },
     following: [{ type: String, lowercase: true, trim: true }],
     savedFeatured: [savedFeaturedSchema],
+    moodLibrary: [{ type: mongoose.Schema.Types.ObjectId, ref: "song" }],
   },
   { timestamps: true }
 );
