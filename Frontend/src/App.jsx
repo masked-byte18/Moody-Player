@@ -283,6 +283,7 @@ function App() {
             <h1>Moody</h1>
           </div>
           <ThemeSwitcher theme={theme} onToggleTheme={handleThemeToggle} />
+
         </header>
 
         <Routes>

@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --primary-gradient: linear-gradient(135deg, #f6f7fb 0%, #d6dbe7 100%);
   --primary-gradient-reverse: linear-gradient(135deg, #d6dbe7 0%, #f6f7fb 100%);
   --accent-gradient: linear-gradient(135deg, #cfd4dd 0%, #ffffff 100%);
@@ -108,15 +109,16 @@
 
 html {
   scroll-behavior: smooth;
-  overflow-x: hidden;
   overscroll-behavior: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--primary-rgb), 0.14) transparent;
 }
 
 html,
 body {
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   background: var(--bg-gradient);
   background-attachment: fixed;
   overscroll-behavior: none;
