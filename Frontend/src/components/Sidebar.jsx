@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import logo from "../assets/logo2.png";
 import "./Sidebar.css";
 
 
@@ -219,9 +220,12 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
         </div>
       <div className="brand-block">
         <div className="brand-block-top">
-          <div>
-            <h2>Moody</h2>
-            <p>Your Music Space</p>
+          <div className="brand-title-group">
+            <img src={logo} alt="Moody Logo" className="brand-logo-img" />
+            <div>
+              <h2>Moody</h2>
+              <p>Your Music Space</p>
+            </div>
           </div>
           {isLoggedIn ? (
             <button

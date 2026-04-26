@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
+import logo from "../assets/logo2.png";
 import "./AuthPage.css";
 
 import API from "../config/api";
@@ -147,7 +148,10 @@ function LoginPage({ onAuthSuccess }) {
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h2>Log In</h2>
+        <div className="auth-header-group">
+          <img src={logo} alt="Moody Logo" className="auth-logo-img" />
+          <h2>Log In</h2>
+        </div>
         <p>Use username/email + password, then verify OTP.</p>
 
         {!otpStep ? (
