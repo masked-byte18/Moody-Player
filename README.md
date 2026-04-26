@@ -127,7 +127,7 @@ Users can step out of their local library to discover trending, royalty-free tra
 
 ```mermaid
 flowchart LR
-    A[User on Explore Page] -->|Searches "Lo-Fi"| B(Jamendo API)
+    A[User on Explore Page] -->|Searches Lo-Fi| B(Jamendo API)
     B -->|Returns Track List| C{Frontend Actions}
     
     C -->|Play Track| D[Audio Player Streams from Jamendo URL]
