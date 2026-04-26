@@ -56,7 +56,9 @@ function LoginPage({ onAuthSuccess }) {
             });
             navigate("/");
           } catch (error) {
-            setFormError(error?.response?.data?.message || "Google sign in failed");
+            const errorData = error?.response?.data;
+            const detailedError = errorData?.error ? ` (${errorData.error})` : "";
+            setFormError((errorData?.message || "Google sign in failed") + detailedError);
           }
         },
       });
@@ -114,7 +116,9 @@ function LoginPage({ onAuthSuccess }) {
       setEmailForOtp(response.data.email || "");
       setOtpStep(true);
     } catch (error) {
-      setFormError(error?.response?.data?.message || "Wrong credentials, please try again.");
+      const errorData = error?.response?.data;
+      const detailedError = errorData?.error ? ` (${errorData.error})` : "";
+      setFormError((errorData?.message || "Wrong credentials, please try again.") + detailedError);
     }
   };
 
@@ -134,7 +138,9 @@ function LoginPage({ onAuthSuccess }) {
       });
       navigate("/");
     } catch (error) {
-      setFormError(error?.response?.data?.message || "OTP verification failed. Please try again.");
+      const errorData = error?.response?.data;
+      const detailedError = errorData?.error ? ` (${errorData.error})` : "";
+      setFormError((errorData?.message || "OTP verification failed. Please try again.") + detailedError);
     }
   };
 
