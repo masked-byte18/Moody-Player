@@ -32,7 +32,7 @@ function LoginPage({ onAuthSuccess }) {
 
       googleButtonRef.current.innerHTML = "";
       window.google.accounts.id.renderButton(googleButtonRef.current, {
-        theme: "outline",
+        theme: "filled_black",
         size: "large",
         shape: "pill",
         width: containerWidth,
