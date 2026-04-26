@@ -15,7 +15,7 @@
 
   > Moody Player is a modern, AI-powered music application that curates personalized, mood-based playlists by detecting your facial expressions in real-time. Designed with collaboration and social interaction in mind, Moody Player allows you to discover new music, share your playlists, collaborate with friends, and see what the community is listening to.
 
-  **[✨ View Live Demo ✨](https://your-live-link-here.com)**
+  **[✨ View Live Demo ✨](https://moody-player-1pva.onrender.com)**
   
   <br />
   
