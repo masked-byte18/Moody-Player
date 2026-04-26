@@ -3,7 +3,7 @@ import axios from "axios";
 import "./ExploreSongsPage.css";
 
 const JAMENDO_API_KEY = import.meta.env.VITE_JAMENDO_CLIENT_ID;
-const LOCAL_API = "http://localhost:3000";
+import API from "../config/api";
 
 // Strip session-specific params so Jamendo track URLs always match the DB record
 const normalizeAudioUrl = (url) => {

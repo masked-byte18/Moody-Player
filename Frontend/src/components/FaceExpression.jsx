@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
 import axios from "axios";
 import "./FacialExpression.css";
+import API from "../config/api";
 
 const normalizeMood = (value = "") => String(value).trim().toLowerCase();
 
@@ -113,7 +114,7 @@ export default function FacialExpression({
             ? { headers: { Authorization: `Bearer ${authToken}` } }
             : {};
         const response = await axios.get(
-          `http://localhost:3000/songs?mood=${detectedMood}`,
+          `${API}/songs?mood=${detectedMood}`,
           requestConfig
         );
         if (onMoodDetected) {

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import "./SongMoodDetector.css";
+import API from "../config/api";
 
 export default function SongMoodDetector({ onSongAdded, activeUser, authToken }) {
   const [uploading, setUploading] = useState(false);
@@ -47,7 +48,7 @@ export default function SongMoodDetector({ onSongAdded, activeUser, authToken })
       formData.append("artist", resolvedArtist);
       formData.append("mood", moodToUse);
 
-      const response = await axios.post("http://localhost:3000/songs", formData, {
+      const response = await axios.post(`${API}/songs`, formData, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },

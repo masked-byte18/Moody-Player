@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./MoodSongs.css";
+import API from "../config/api";
 
 const MoodSongs = ({ songs = [] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -48,7 +49,7 @@ const MoodSongs = ({ songs = [] }) => {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`http://localhost:3000/songs/${songId}`, {
+      const response = await fetch(`${API}/songs/${songId}`, {
         method: "DELETE",
       });
 
