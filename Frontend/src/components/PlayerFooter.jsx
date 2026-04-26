@@ -146,9 +146,6 @@ const PlayerFooter = ({
             <i className="ri-repeat-one-line"></i>
           </button>
         </div>
-        
-        {/* Empty div for flexbox balancing on desktop */}
-        <div className="player-spacer"></div>
       </div>
 
       <audio

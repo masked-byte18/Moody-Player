@@ -150,9 +150,6 @@
   flex-shrink: 0;
 }
 
-.player-spacer {
-  display: none;
-}
 
 .player-controls .control-btn {
   width: 34px;
@@ -278,10 +275,6 @@
     margin-top: 8px;
   }
 
-  .player-spacer {
-    display: block;
-    flex: 1;
-  }
 
   .player-track-info {
     min-width: 200px;
