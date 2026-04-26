@@ -4,8 +4,6 @@ const songRoutes = require("./routes/song.routes")
 const playlistRoutes = require("./routes/playlist.routes")
 const authRoutes = require("./routes/auth.routes")
 const cors = require('cors');
-const path = require('path');
-
 const app = express();
 const configuredOrigins = String(process.env.CORS_ORIGINS || "http://localhost:5173")
   .split(",")
