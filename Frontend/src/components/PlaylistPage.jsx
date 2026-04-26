@@ -5,7 +5,7 @@ import { analyzeAudioMood, deriveTitleFromFile } from "../utils/audioMood";
 import "./PlaylistPage.css";
 import "./PlaylistsPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 const normalizeMood = (mood) => (mood || "unknown").toLowerCase();
 const normalizeUsername = (value) => (value || "").trim().toLowerCase();

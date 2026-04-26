@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import "./Sidebar.css";
 
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 const profileColor = (seed = "U") => {
   const palette = ["#d9dde5", "#bfc6d2", "#f0f2f6", "#9ea7b5", "#cfd5de", "#7f8794"];

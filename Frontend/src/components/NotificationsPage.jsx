@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import "./NotificationsPage.css";
 import "./PlaylistPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 const formatRelativeTime = (value) => {
   const diffMinutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60000));

@@ -5,7 +5,7 @@ import "./PlaylistsPage.css";
 import "./FeaturedHubPage.css";
 import "./PlaylistPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 const FeaturedHubPage = ({
   activeUser,

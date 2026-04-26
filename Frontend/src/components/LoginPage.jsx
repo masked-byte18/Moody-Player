@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import "./AuthPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 function LoginPage({ onAuthSuccess }) {

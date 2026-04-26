@@ -14,6 +14,7 @@ import ThemeSwitcher from "./components/ThemeSwitcher";
 import LoginPage from "./components/LoginPage";
 import ExploreSongsPage from "./components/ExploreSongsPage";
 import SignupPage from "./components/SignupPage";
+import API from "./config/api";
 
 function App() {
   const [userState, setUserState] = useState(() => ({
@@ -53,7 +54,7 @@ function App() {
       }
 
       try {
-        const response = await fetch("http://localhost:3000/mood-library", {
+        const response = await fetch(`${API}/mood-library`, {
           headers: {
             Authorization: `Bearer ${userState.token}`,
           },
@@ -114,7 +115,7 @@ function App() {
     // Save to backend mood library so it persists across reloads for this user
     if (userState.token && userState.username !== "guest" && song._id) {
       try {
-        await fetch("http://localhost:3000/mood-library", {
+        await fetch(`${API}/mood-library`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -154,7 +155,7 @@ function App() {
 
     try {
       if (userState.token && userState.username !== "guest") {
-        const response = await fetch(`http://localhost:3000/mood-library/${songId}`, {
+        const response = await fetch(`${API}/mood-library/${songId}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${userState.token}` },
         });
@@ -190,7 +191,7 @@ function App() {
 
     if (userState.token && userState.username !== "guest") {
       try {
-        await fetch(`http://localhost:3000/mood-library/reorder`, {
+        await fetch(`${API}/mood-library/reorder`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

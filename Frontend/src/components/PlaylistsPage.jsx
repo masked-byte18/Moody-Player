@@ -4,7 +4,7 @@ import axios from "axios";
 import "./PlaylistsPage.css";
 import "./PlaylistPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 const getRequestPlaylistId = (request) => {
   if (typeof request?.playlist === "string") return request.playlist;

@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import "./AuthPage.css";
 
-const API = "http://localhost:3000";
+import API from "../config/api";
 
 function SignupPage({ onAuthSuccess }) {
   const navigate = useNavigate();
