@@ -1,228 +1,238 @@
-<div align="center">
-  <img src="https://img.shields.io/badge/Moody_Player-000000?style=for-the-badge&logo=music&logoColor=white" alt="Moody Player" width="300" />
-  <h1>🎵 Moody Player</h1>
-  <p><b>Next-Generation Mood-Based Audio Discovery & Collaborative Listening</b></p>
+# 🎵 Moody Player
 
-  [![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)](#)
-  [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white)](#)
-  [![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white)](#)
-  [![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=flat-square&logo=mongodb&logoColor=white)](#)
-  [![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)](#)
-</div>
+Moody Player is a modern, AI-powered music application that curates personalized, mood-based playlists by detecting your facial expressions in real-time. Designed with collaboration and social interaction in mind, Moody Player allows you to discover new music, share your playlists, collaborate with friends, and see what the community is listening to.
+
+![Moody Player Preview](./Frontend/public/favicon.ico) *(Feel free to add your own screenshots here!)*
 
 ---
 
-## 📖 Overview
+## 🌊 Platform Architecture & Data Flow
 
-**Moody Player** is a modern, full-stack music streaming and audio curation platform that blends intelligent mood-based listening with robust social collaboration. 
+Moody Player is composed of several interconnected subsystems that blend AI, social networking, and real-time collaboration. Below is a detailed view of how data flows through the platform.
 
-Designed with a premium dark-mode aesthetic and dynamic micro-animations, the application offers an infinite "Magic Shuffle", independent user-specific mood queues, real-time collaboration on playlists, and an integrated social graph.
+### 1. High-Level System Architecture
 
----
-
-## 🏗 Architecture Execution Map
-
-The system uses a decoupled client-server architecture with state-driven dynamic routing, centralized audio streaming, and an intelligent global queue manager.
+This diagram illustrates the macro-level interactions between the User, the Frontend (React + AI Models), the Backend API, and external services like Jamendo.
 
 ```mermaid
-graph TD
+flowchart TD
+    %% Entities
+    User((User))
+    Jamendo[Jamendo API]
+    
     %% Frontend Layer
-    subgraph Frontend [React Vite Client]
-        A[UI Components] --> B(Global State: App.jsx)
-        B --> |Queue Manager| C[PlayerFooter]
-        B --> |Auth State| D[Auth Guard]
-        
-        %% Pages
-        D --> E[Discover Page]
-        D --> F[Explore Page: Jamendo API]
-        D --> G[Mood Detector]
-        D --> H[Collab Playlists]
+    subgraph Frontend [Frontend Client - React/Vite]
+        UI[UI Components & Player]
+        FaceAPI[face-api.js Model]
     end
 
     %% Backend Layer
-    subgraph Backend [Node.js + Express Server]
-        I[Auth Middleware] --> J[Song Routes]
-        I --> K[Playlist Routes]
-        I --> L[Collab Routes]
-        
-        %% Services
-        J --> M(Song Service)
-        K --> N(Playlist Service)
-        L --> O(Social Service)
-        
-        M -.-> |File Buffer| P[Firebase Storage]
+    subgraph Backend [Backend Server - Node/Express]
+        Auth[Auth Service]
+        CollabServ[Collaboration Service]
+        MusicServ[Music & Playlist Service]
+        SocialServ[Social Service]
     end
 
     %% Database Layer
-    subgraph Database [MongoDB Cloud]
-        Q[(Users Collection)]
-        R[(Songs Collection)]
-        S[(Playlists Collection)]
-        T[(Notifications Collection)]
-    end
+    DB[(MongoDB)]
 
     %% Connections
-    Frontend <==REST API==> Backend
-    M ==> R
-    N ==> S
-    O ==> Q
-    O ==> T
-    P -.-> |Audio URL| C
+    User <-->|Interacts| UI
+    User -->|Webcam Feed| FaceAPI
+    FaceAPI -->|Extracted Mood| UI
+    
+    UI <-->|JWT Auth| Auth
+    UI <-->|Fetch/Search Music| Jamendo
+    UI <-->|Manage Playlists| MusicServ
+    UI <-->|Collab Requests| CollabServ
+    UI <-->|Follows / Feed| SocialServ
+    
+    Auth <--> DB
+    CollabServ <--> DB
+    MusicServ <--> DB
+    SocialServ <--> DB
 ```
 
 ---
 
-## ✨ Core Features & Analytics
+### 2. The Core AI Music Flow
 
-### 🧠 Intelligent Mood Queue
-- **Personalized Isolation:** Every user has a strictly isolated `moodLibrary` anchored to their profile.
-- **Duplicate Handling:** Uploading a track that already exists in the global DB automatically aliases the track to the user's permanent queue, preventing storage bloat while persisting across sessions.
-- **Auto-Detection:** Analyzes audio files on upload to dynamically assign moods (Happy, Sad, Chill, Energetic).
-
-### 🌍 Explore & Magic Shuffle
-- **Jamendo API Integration:** Dynamically fetches royalty-free music.
-- **Infinite Magic Shuffle:** An algorithm that auto-feeds the global queue with random tracks, creating an endless listening loop.
-- **Global Likes Sync:** Features a highly optimized state unification system. Likes are mapped using a normalized URL hashing system, perfectly aligning database entries with real-time UI interactions across the app.
-
-### 🤝 Real-Time Collaboration & Social Graph
-- **Role-Based Access Control:** Playlists support `owners` and `contributors`.
-- **Social Graph:** Fully functional "Following" and "Follower" ecosystem.
-- **Real-Time Notifications:** In-app notification center that dynamically updates when users send collaboration invites or follow requests.
-
----
-
-## 📊 Data Flow Analytics
+When a user visits the main page, the application uses their webcam to detect their current emotion and instantly curates a listening experience.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Frontend
-    participant Jamendo API
-    participant Express API
-    participant MongoDB
+    participant Browser as React Frontend
+    participant AI as face-api.js (Local)
+    participant API as Express API
+    participant DB as MongoDB
 
-    User->>Frontend: Clicks "Like" on Explore Page
-    Frontend->>Frontend: Normalize URL (Strip Session Tokens)
-    
-    alt If external track not in DB
-        Frontend->>Express API: POST /songs/external (Sync to DB)
-        Express API->>MongoDB: Create Song Document
-        MongoDB-->>Express API: Return Document ID
-        Express API-->>Frontend: 201 Created
-    end
-    
-    Frontend->>Express API: POST /songs/{id}/like
-    Express API->>MongoDB: Update `likedBy` Array & `likesCount`
-    MongoDB-->>Express API: Aggregated Count
-    Express API-->>Frontend: Updated State
-    Frontend->>User: UI Updates Instantly (Dynamic Count)
+    User->>Browser: Clicks "Detect Mood"
+    Browser->>User: Prompts for Webcam Access
+    User-->>Browser: Grants Access
+    Browser->>AI: Passes Video Frame
+    AI-->>Browser: Returns Emotion Scores (e.g., Happy: 0.85)
+    Browser->>Browser: Selects Dominant Mood ("happy")
+    Browser->>API: GET /songs?mood=happy
+    API->>DB: Query songs matching mood
+    DB-->>API: Array of Songs
+    API-->>Browser: JSON Playlist Data
+    Browser->>User: Starts Playing Upbeat Music
 ```
 
 ---
 
-## ⚙️ Component Lifecycle (The Player Engine)
+### 3. Collaborative Playlist Lifecycle
 
-The core audio engine resides in `PlayerFooter.jsx`, orchestrated by state passed down from `App.jsx`.
+Moody Player allows users to request edit access to public playlists. Once approved, contributors can add, delete, or reorder songs, with every action tracked in an activity ledger.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idle
-    Idle --> LoadingQueue: User clicks Play/Shuffle
-    LoadingQueue --> Playing: Track Loaded
+    [*] --> PublicPlaylist: Owner creates playlist
     
-    Playing --> Seeking: User Drags Timeline
-    Seeking --> Playing: Drag Released
-    
-    Playing --> EvaluatingQueue: Track Ends
-    
-    state EvaluatingQueue {
-        [*] --> CheckType
-        CheckType --> IsPlaylist: type === 'playlist'
-        CheckType --> IsMagicShuffle: type === 'explore_shuffle'
-        
-        IsPlaylist --> StopPlaying: End of Playlist Reached
-        IsPlaylist --> NextSequential: Has Next Track
-        
-        IsMagicShuffle --> PickRandomIndex: Infinite Loop
+    state "Social Discovery" as SD {
+        PublicPlaylist --> UserBrowsing: User finds playlist
+        UserBrowsing --> RequestSent: User clicks "Contribute"
     }
     
-    NextSequential --> Playing
-    PickRandomIndex --> Playing
+    state "Inbox Management" as IM {
+        RequestSent --> OwnerInbox: Notification created
+        OwnerInbox --> Rejected: Owner Rejects
+        OwnerInbox --> Accepted: Owner Accepts
+    }
+    
+    Rejected --> [*]
+    
+    state "Collaborative Editing" as CE {
+        Accepted --> ContributorAccess
+        ContributorAccess --> AddSong: Uploads/Adds Jamendo track
+        ContributorAccess --> ReorderSong: Drags to change order
+        ContributorAccess --> DeleteSong: Removes a track
+        
+        AddSong --> ActivityLog: Logs "Added Song"
+        ReorderSong --> ActivityLog: Logs "Reordered"
+        DeleteSong --> ActivityLog: Logs "Deleted Song"
+    }
+    
+    ActivityLog --> PlaylistUpdated: Real-time update
+    PlaylistUpdated --> [*]
 ```
 
 ---
 
-## 💻 Tech Stack Breakdown
+### 4. External Discovery (Jamendo Integration)
 
-### Frontend Environment
-- **Core:** React 18, Vite
-- **Styling:** Vanilla CSS (CSS Variables, Flexbox/Grid, Glassmorphism, Responsive Media Queries)
-- **State Management:** React Hooks (`useState`, `useEffect`) lifted to root.
-- **Audio API:** Native HTML5 `Audio` element dynamically controlled via React Refs.
-- **Icons:** Remix Icons
+Users can step out of their local library to discover trending, royalty-free tracks worldwide and bring them into the Moody ecosystem.
 
-### Backend & Infrastructure
-- **Server:** Node.js, Express.js
-- **Database:** MongoDB (Mongoose ODM)
-- **Authentication:** JWT (JSON Web Tokens), bcrypt
-- **Storage:** Firebase/GCP Storage for audio blobs, Jamendo storage for external CDNs.
-- **Middleware:** Multer (Memory Storage for Buffer Hash generation), Custom Auth Guards.
+```mermaid
+flowchart LR
+    A[User on Explore Page] -->|Searches "Lo-Fi"| B(Jamendo API)
+    B -->|Returns Track List| C{Frontend Actions}
+    
+    C -->|Play Track| D[Audio Player Streams from Jamendo URL]
+    C -->|Like Track| E[Backend creates external reference & increments likes]
+    C -->|Add to Playlist| F[Backend saves Jamendo URL into MongoDB Playlist]
+```
 
 ---
 
-## 🚀 Local Setup Instructions
+## ✨ Key Features
+
+- **🎭 AI Facial Expression Detection**: Utilizes your device's webcam and `face-api.js` to analyze your current facial expression and automatically curate a customized music queue matching your mood.
+- **🤝 Real-time Collaborative Playlists**: Create playlists and invite friends to contribute. Manage incoming contribution requests via a dedicated inbox, and see real-time playlist activity and analytics.
+- **🌍 Social & Discovery Hub**: Follow other users, see their public playlists, and get notified about their latest activity. 
+- **🎧 Jamendo API Integration**: Explore trending, royalty-free tracks directly from independent artists using the Jamendo API. Play them instantly or save them to your personal playlists.
+- **🎨 Premium UI/UX**: Features a highly responsive, mobile-first design with a beautiful custom theme system (Charcoal and Deep Blue), glassmorphism effects, and smooth micro-animations.
+
+## 🛠 Tech Stack
+
+**Frontend**:
+- **React (Vite)**: For blazing-fast development and optimized production builds.
+- **React Router**: For seamless, client-side navigation.
+- **Face-api.js**: For running in-browser, lightweight AI models (TinyFaceDetector, FaceExpressionNet) to detect moods.
+- **Vanilla CSS**: Fully custom, responsive styling without heavy CSS frameworks.
+- **Axios**: For API requests.
+
+**Backend**:
+- **Node.js & Express.js**: Robust, scalable backend architecture.
+- **MongoDB & Mongoose**: Flexible NoSQL database for managing users, playlists, songs, and social graphs.
+- **JWT Authentication**: Secure user login and registration flow.
+- **Multer**: For handling profile photo and local song uploads.
+
+## 🚀 Getting Started
+
+Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
 
 ### Prerequisites
-- Node.js (v18+)
-- MongoDB connection string
-- Jamendo API Client ID
+- Node.js (v16+)
+- MongoDB (Local instance or MongoDB Atlas cluster)
+- A free Jamendo Developer Client ID (for the Explore feature)
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/your-username/moody-player.git
-cd moody-player
+### 1. Backend Setup
+1. Navigate to the `Backend` directory:
+   ```bash
+   cd Backend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create a `.env` file in the `Backend` directory and configure the following variables:
+   ```env
+   PORT=3000
+   MONGO_URI=your_mongodb_connection_string
+   JWT_SECRET=your_super_secret_jwt_key
+   ```
+4. Start the backend development server:
+   ```bash
+   npm run dev
+   ```
+
+### 2. Frontend Setup
+1. Open a new terminal and navigate to the `Frontend` directory:
+   ```bash
+   cd Frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create a `.env` file in the `Frontend` directory and add your Jamendo Client ID:
+   ```env
+   VITE_JAMENDO_CLIENT_ID=your_jamendo_client_id
+   ```
+4. Start the frontend development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open your browser and navigate to `http://localhost:5173`.
+
+## 📁 Project Structure
+
+```
+Moody Player/
+├── Backend/                 # Express Server & API routes
+│   ├── src/
+│   │   ├── controllers/     # Route logic
+│   │   ├── middleware/      # Auth & file upload middlewares
+│   │   ├── models/          # Mongoose schemas (User, Playlist, Song, etc.)
+│   │   ├── routes/          # Express route definitions
+│   │   ├── service/         # Business logic & integrations
+│   │   └── index.js         # Server entry point
+│   └── package.json
+│
+├── Frontend/                # React UI
+│   ├── public/              # Static assets & AI Models (/models)
+│   ├── src/
+│   │   ├── components/      # React components (Sidebar, PlayerFooter, Pages)
+│   │   ├── utils/           # Helper functions (audio mood extraction)
+│   │   ├── App.jsx          # Main application routing
+│   │   └── index.css        # Global design tokens and utilities
+│   └── package.json
+└── README.md
 ```
 
-### 2. Configure Backend
-```bash
-cd Backend
-# Install dependencies from package.json (versions specified in req.txt)
-npm install
-```
-Create a `.env` file in the `Backend` directory with the following variables:
-```env
-PORT=3000
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_super_secret_jwt_key
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-FIREBASE_PROJECT_ID=your_firebase_project_id
-FIREBASE_PRIVATE_KEY="your_firebase_private_key"
-FIREBASE_CLIENT_EMAIL=your_firebase_client_email
-```
-Start the backend server:
-```bash
-npm run dev
-```
-
-### 3. Configure Frontend
-```bash
-cd ../Frontend
-# Install dependencies from package.json (versions specified in req.txt)
-npm install
-```
-Create a `.env` file in the `Frontend` directory with the following variables:
-```env
-VITE_JAMENDO_CLIENT_ID=your_jamendo_api_client_id
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
-```
-Start the frontend development server:
-```bash
-npm run dev
-```
-
----
-
-<div align="center">
-  <p>Built with ❤️ by Raj</p>
-</div>
+## 📝 License
+This project is for educational and portfolio purposes. Data fetched from Jamendo is subject to Jamendo's API usage terms.

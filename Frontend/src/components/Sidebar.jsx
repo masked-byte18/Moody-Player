@@ -79,16 +79,6 @@ function Sidebar({ user, onUserChange, onLogout, mobileOpen = false, onCloseMobi
     }
   }, [authToken, handleUnauthorized, isLoggedIn]);
 
-  const openProfileModal = async () => {
-    setUsernameDraft(user.username || "guest");
-    setDisplayDraft(user.displayName || "Guest");
-    setPhotoFile(null);
-    setOpenProfile(true);
-    if (user.username) {
-      await loadFriends();
-    }
-  };
-
   const loadSocialStats = useCallback(async () => {
     if (!isLoggedIn || !authToken) {
       setSocialStats({ followersCount: 0, followingCount: 0 });

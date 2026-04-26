@@ -139,14 +139,16 @@ export default function FacialExpression({
     mountedRef.current = true;
     loadModels().then(startVideo);
 
+    const videoNode = videoRef.current;
+
     return () => {
       mountedRef.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+      if (videoNode) {
+        videoNode.srcObject = null;
       }
     };
   }, []);

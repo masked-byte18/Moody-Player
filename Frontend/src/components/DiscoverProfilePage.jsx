@@ -7,7 +7,7 @@ import "./PlaylistPage.css";
 
 const API = "http://localhost:3000";
 
-const DiscoverProfilePage = ({ activeUser, activeDisplayName, authToken, onUserChange }) => {
+const DiscoverProfilePage = ({ activeUser, authToken, onUserChange }) => {
   const navigate = useNavigate();
   const { username } = useParams();
   const [publicPlaylists, setPublicPlaylists] = useState([]);

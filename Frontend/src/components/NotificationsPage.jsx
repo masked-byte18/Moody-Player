@@ -61,7 +61,7 @@ function NotificationsPage({ activeUser, authToken }) {
   const [requests, setRequests] = useState([]);
   const [outgoingRequests, setOutgoingRequests] = useState([]);
   const [realNotifications, setRealNotifications] = useState([]);
-  const [friendStatuses, setFriendStatuses] = useState({});
+
   const [friendList, setFriendList] = useState([]);
   const [contributors, setContributors] = useState([]);
   const [messageTarget, setMessageTarget] = useState(null);
@@ -249,13 +249,6 @@ function NotificationsPage({ activeUser, authToken }) {
       setToastMessage(error?.response?.data?.message || "Failed to update request status.");
       setToastType("error");
     }
-  };
-
-  const handleFriendAction = (notificationId, status) => {
-    setFriendStatuses((current) => ({
-      ...current,
-      [notificationId]: status,
-    }));
   };
 
   const handleUnfollowFriend = (friendId) => {

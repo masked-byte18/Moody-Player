@@ -77,7 +77,7 @@ function App() {
           setCurrentIndex(0);
           setIsPlaying(false);
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setMoodLibrary([]);
           setMoodSongs([]);
@@ -95,6 +95,7 @@ function App() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userState.token, userState.username]);
 
   const startQueue = (songs, source, index = 0) => {

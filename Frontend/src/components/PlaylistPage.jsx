@@ -61,13 +61,13 @@ const PlaylistPage = ({
   const [pendingDeleteSongId, setPendingDeleteSongId] = useState(null);
   const [showLeaveCollabConfirm, setShowLeaveCollabConfirm] = useState(false);
 
-  const authConfig = authToken
+  const authConfig = useMemo(() => (authToken
     ? {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
       }
-    : null;
+    : null), [authToken]);
 
   const loadPlaylist = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -88,7 +88,7 @@ const PlaylistPage = ({
     } finally {
       if (!isBackground) setLoading(false);
     }
-  }, [id, location.state]);
+  }, [id]);
 
   const loadUserPlaylists = useCallback(async () => {
     if (!activeUser || activeUser === "guest") {
@@ -209,7 +209,6 @@ const PlaylistPage = ({
     const updatedPlaylist = { ...playlist, songs };
     setPlaylist(updatedPlaylist);
     setLocalSongs(songs);
-    savePlaylistDraft(playlist._id, { songs });
 
     if (activePlaylistId === playlist._id) {
       onUpdateActivePlaylist(updatedPlaylist, nextIndex);
@@ -225,16 +224,20 @@ const PlaylistPage = ({
     onPlayPlaylist(playablePlaylist, startIndex);
   };
 
-  const recordContribution = (type, text) => {
+  const recordContribution = async (type, text) => {
     if (!playlist || !activeUser || activeUser === "guest" || isOwner || !isCollaborator) return;
-    logContributionActivity({
-      actorUsername: activeUser,
-      actorDisplayName: activeDisplayName || activeUser,
-      playlistId: playlist._id,
-      playlistName: playlist.name,
-      type,
-      text,
-    });
+    try {
+      await axios.post(`${API}/playlists/${playlist._id}/activity`, {
+        actorUsername: activeUser,
+        actorDisplayName: activeDisplayName || activeUser,
+        playlistId: playlist._id,
+        playlistName: playlist.name,
+        type,
+        text,
+      }, authConfig);
+    } catch (err) {
+      console.error("Failed to log activity", err);
+    }
   };
 
   const handlePlayCurrentPlaylist = (index = 0) => {
@@ -583,12 +586,16 @@ const PlaylistPage = ({
     setShowContributeModal(true);
   };
 
-  const confirmLeaveCollab = () => {
+  const confirmLeaveCollab = async () => {
     setShowLeaveCollabConfirm(false);
-    removePlaylistCollaborator(playlist._id, activeUser);
-    setPendingRequest(false);
-    setToastMessage("You stopped collaborating on this playlist.");
-    setToastType("success");
+    try {
+      await axios.delete(`${API}/playlists/${playlist._id}/contributors/${activeUser}`, authConfig);
+      setPendingRequest(false);
+      setToastMessage("You stopped collaborating on this playlist.");
+      setToastType("success");
+    } catch (error) {
+      console.error("Failed to leave collaboration:", error);
+    }
   };
 
   if (loading) {

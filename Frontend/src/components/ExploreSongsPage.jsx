@@ -32,6 +32,7 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
 
   useEffect(() => {
     fetchGlobalLikesMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken, activeUser]);
 
   useEffect(() => {

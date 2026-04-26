@@ -9,14 +9,12 @@ const API = "http://localhost:3000";
 
 const FeaturedHubPage = ({
   activeUser,
-  activeDisplayName,
   authToken,
 }) => {
   const navigate = useNavigate();
   const [featuredPlaylists, setFeaturedPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [friends, setFriends] = useState([]);
   const [likeState, setLikeState] = useState({});
   const [clonedSet, setClonedSet] = useState(new Set());
   const [toastMessage, setToastMessage] = useState("");
@@ -69,23 +67,6 @@ const FeaturedHubPage = ({
     [activeUser, authToken]
   );
 
-  const loadFriends = useCallback(async () => {
-    if (!activeUser || activeUser === "guest") {
-      setFriends([]);
-      return;
-    }
-
-    try {
-      const response = await axios.get(`${API}/social/friends`, {
-        params: { username: activeUser },
-      });
-      setFriends(response.data.friends || []);
-    } catch (error) {
-      console.error("Failed to load friends:", error);
-      setFriends([]);
-    }
-  }, [activeUser]);
-
   const loadClonedStatus = useCallback(async () => {
     if (!authConfig) {
       setClonedSet(new Set());
@@ -102,15 +83,11 @@ const FeaturedHubPage = ({
     } catch {
       setClonedSet(new Set());
     }
-  }, [authConfig]);
+  }, [authConfig, activeUser]);
 
   useEffect(() => {
     loadFeaturedPlaylists();
   }, [loadFeaturedPlaylists]);
-
-  useEffect(() => {
-    loadFriends();
-  }, [loadFriends]);
 
   useEffect(() => {
     loadClonedStatus();
@@ -121,11 +98,6 @@ const FeaturedHubPage = ({
     const timer = setTimeout(() => { setToastMessage(""); setToastType(""); }, 3500);
     return () => clearTimeout(timer);
   }, [toastMessage]);
-
-  const followedUsernames = useMemo(
-    () => new Set(friends.map((friend) => friend.username)),
-    [friends]
-  );
 
   const filteredPlaylists = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -152,30 +124,6 @@ const FeaturedHubPage = ({
       );
     });
   }, [featuredPlaylists, searchTerm]);
-
-  const handleFollowToggle = async (event, playlistOwnerUsername) => {
-    event.stopPropagation();
-    if (!authConfig) {
-      setToastMessage("Please log in to follow users.");
-      setToastType("error");
-      return;
-    }
-
-    const isFollowing = followedUsernames.has(playlistOwnerUsername);
-
-    try {
-      if (isFollowing) {
-        await axios.post(`${API}/social/unfollow/${playlistOwnerUsername}`, {}, authConfig);
-      } else {
-        await axios.post(`${API}/social/follow/${playlistOwnerUsername}`, {}, authConfig);
-      }
-      await loadFriends();
-    } catch (error) {
-      console.error("Follow toggle error:", error);
-      setToastMessage("Failed to update follow status");
-      setToastType("error");
-    }
-  };
 
   const handleClonePlaylist = async (event, playlistId) => {
     event.stopPropagation();
