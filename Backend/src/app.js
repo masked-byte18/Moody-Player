@@ -12,6 +12,14 @@ const configuredOrigins = String(process.env.CORS_ORIGINS || "http://localhost:5
 
 // Serve frontend static files FIRST (before CORS/API middleware)
 const frontendPath = path.join(__dirname, '../public');
+
+// Allow Google Identity Services popup to communicate with the main window
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  next();
+});
+
 app.use(express.static(frontendPath));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

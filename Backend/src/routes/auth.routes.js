@@ -213,7 +213,7 @@ router.post("/auth/signup", async (req, res) => {
     });
   } catch (error) {
     console.error("Signup error:", error);
-    return res.status(500).json({ message: "Signup failed" });
+    return res.status(500).json({ message: "Signup failed", error: error.message || error.toString() });
   }
 });
 
@@ -255,7 +255,7 @@ router.post("/auth/verify-signup", async (req, res) => {
     });
   } catch (error) {
     console.error("Verify signup error:", error);
-    return res.status(500).json({ message: "Verification failed" });
+    return res.status(500).json({ message: "Verification failed", error: error.message || error.toString() });
   }
 });
 
@@ -301,7 +301,7 @@ router.post("/auth/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Login failed" });
+    return res.status(500).json({ message: "Login failed", error: error.message || error.toString() });
   }
 });
 
@@ -342,7 +342,7 @@ router.post("/auth/verify-login", async (req, res) => {
     });
   } catch (error) {
     console.error("Verify login error:", error);
-    return res.status(500).json({ message: "Login verification failed" });
+    return res.status(500).json({ message: "Login verification failed", error: error.message || error.toString() });
   }
 });
 
@@ -421,7 +421,7 @@ router.post("/auth/google", async (req, res) => {
     });
   } catch (error) {
     console.error("Google sign-in error:", error);
-    return res.status(500).json({ message: "Google sign-in failed" });
+    return res.status(500).json({ message: "Google sign-in failed", error: error.message || error.toString() });
   }
 });
 
@@ -430,7 +430,7 @@ router.get("/auth/profile", requireAuth, async (req, res) => {
     return res.status(200).json({ user: userResponse(req.user) });
   } catch (error) {
     console.error("Profile fetch error:", error);
-    return res.status(500).json({ message: "Failed to fetch profile" });
+    return res.status(500).json({ message: "Failed to fetch profile", error: error.message || error.toString() });
   }
 });
 
@@ -486,7 +486,7 @@ router.put("/auth/profile", requireAuth, imageUpload.single("profilePhoto"), asy
     });
   } catch (error) {
     console.error("Profile update error:", error);
-    return res.status(500).json({ message: "Failed to update profile" });
+    return res.status(500).json({ message: "Failed to update profile", error: error.message || error.toString() });
   }
 });
 
