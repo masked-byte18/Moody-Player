@@ -34,7 +34,7 @@ app.use('/',songRoutes);
 app.use('/',playlistRoutes);
 app.use('/',authRoutes);
 
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
