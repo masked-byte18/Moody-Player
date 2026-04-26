@@ -1,10 +1,31 @@
-# 🎵 Moody Player
+<div align="center">
+  
+  # 🎵 Moody Player
+  
+  **AI-Powered Facial Recognition Music Curation & Collaborative Platform**
 
-Moody Player is a modern, AI-powered music application that curates personalized, mood-based playlists by detecting your facial expressions in real-time. Designed with collaboration and social interaction in mind, Moody Player allows you to discover new music, share your playlists, collaborate with friends, and see what the community is listening to.
+  [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](#)
+  [![Vite](https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E)](#)
+  [![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#)
+  [![Express.js](https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white)](#)
+  [![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white)](#)
+  [![Face-API](https://img.shields.io/badge/Face_API.js-FF6C37?style=for-the-badge&logo=javascript&logoColor=white)](#)
+  
+  <br />
 
-**🔗 Live Demo: [https://your-live-link-here.com](https://your-live-link-here.com)**
+  > Moody Player is a modern, AI-powered music application that curates personalized, mood-based playlists by detecting your facial expressions in real-time. Designed with collaboration and social interaction in mind, Moody Player allows you to discover new music, share your playlists, collaborate with friends, and see what the community is listening to.
 
-![Moody Player Preview](./Frontend/public/favicon.ico) *(Feel free to add your own screenshots here!)*
+  **[✨ View Live Demo ✨](https://your-live-link-here.com)**
+  
+  <br />
+  
+  ![Moody Player Preview](./Frontend/public/favicon.ico) 
+  <br />
+  *(Feel free to replace this with your own gorgeous high-res screenshot!)*
+
+</div>
+
+<br />
 
 ---
 
@@ -89,36 +110,28 @@ sequenceDiagram
 
 Moody Player allows users to request edit access to public playlists. Once approved, contributors can add, delete, or reorder songs, with every action tracked in an activity ledger.
 
+*(Note: Kept flat to ensure compatibility with all Markdown renderers!)*
+
 ```mermaid
-stateDiagram-v2
-    [*] --> PublicPlaylist: Owner creates playlist
+flowchart TD
+    Start((Start)) --> Owner[Owner creates playlist]
+    Owner --> Discovery[User browses public playlists]
+    Discovery --> Request[User clicks 'Contribute']
     
-    state "Social Discovery" as SD {
-        PublicPlaylist --> UserBrowsing: User finds playlist
-        UserBrowsing --> RequestSent: User clicks "Contribute"
-    }
+    Request --> Inbox[Notification sent to Owner's Inbox]
+    Inbox -->|Owner Rejects| Rejected[Request Rejected]
+    Inbox -->|Owner Accepts| Accepted[Contributor Access Granted]
     
-    state "Inbox Management" as IM {
-        RequestSent --> OwnerInbox: Notification created
-        OwnerInbox --> Rejected: Owner Rejects
-        OwnerInbox --> Accepted: Owner Accepts
-    }
+    Accepted --> Action1[Uploads/Adds Jamendo track]
+    Accepted --> Action2[Drags to change order]
+    Accepted --> Action3[Removes a track]
     
-    Rejected --> [*]
+    Action1 --> Log[Activity Logged]
+    Action2 --> Log
+    Action3 --> Log
     
-    state "Collaborative Editing" as CE {
-        Accepted --> ContributorAccess
-        ContributorAccess --> AddSong: Uploads/Adds Jamendo track
-        ContributorAccess --> ReorderSong: Drags to change order
-        ContributorAccess --> DeleteSong: Removes a track
-        
-        AddSong --> ActivityLog: Logs "Added Song"
-        ReorderSong --> ActivityLog: Logs "Reordered"
-        DeleteSong --> ActivityLog: Logs "Deleted Song"
-    }
-    
-    ActivityLog --> PlaylistUpdated: Real-time update
-    PlaylistUpdated --> [*]
+    Log --> Update[Playlist Real-time Update]
+    Update --> End((End))
 ```
 
 ---
@@ -147,73 +160,78 @@ flowchart LR
 - **🎧 Jamendo API Integration**: Explore trending, royalty-free tracks directly from independent artists using the Jamendo API. Play them instantly or save them to your personal playlists.
 - **🎨 Premium UI/UX**: Features a highly responsive, mobile-first design with a beautiful custom theme system (Charcoal and Deep Blue), glassmorphism effects, and smooth micro-animations.
 
-## 🛠 Tech Stack
+---
 
-**Frontend**:
-- **React (Vite)**: For blazing-fast development and optimized production builds.
-- **React Router**: For seamless, client-side navigation.
-- **Face-api.js**: For running in-browser, lightweight AI models (TinyFaceDetector, FaceExpressionNet) to detect moods.
-- **Vanilla CSS**: Fully custom, responsive styling without heavy CSS frameworks.
-- **Axios**: For API requests.
+## 🛠 Tech Stack Overview
 
-**Backend**:
-- **Node.js & Express.js**: Robust, scalable backend architecture.
-- **MongoDB & Mongoose**: Flexible NoSQL database for managing users, playlists, songs, and social graphs.
-- **JWT Authentication**: Secure user login and registration flow.
-- **Multer**: For handling profile photo and local song uploads.
+| **Domain** | **Technology** | **Description** |
+|:---:|:---|:---|
+| **Frontend** | React (Vite) | Blazing-fast development and optimized production builds. |
+| **Routing** | React Router | Seamless, client-side navigation. |
+| **AI/ML** | Face-api.js | Runs in-browser, lightweight AI models to detect moods. |
+| **Styling** | Vanilla CSS | Fully custom, responsive styling without heavy CSS frameworks. |
+| **Backend** | Node.js & Express.js | Robust, scalable backend architecture. |
+| **Database** | MongoDB & Mongoose | Flexible NoSQL database for managing data relations. |
+| **Auth** | JWT | Secure user login and registration flow. |
+
+---
 
 ## 🚀 Getting Started
 
 Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
 
 ### Prerequisites
-- Node.js (v16+)
-- MongoDB (Local instance or MongoDB Atlas cluster)
-- A free Jamendo Developer Client ID (for the Explore feature)
+- **Node.js** (v16+)
+- **MongoDB** (Local instance or MongoDB Atlas cluster)
+- A free **Jamendo Developer Client ID** (for the Explore feature)
 
 ### 1. Backend Setup
-1. Navigate to the `Backend` directory:
-   ```bash
-   cd Backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file in the `Backend` directory and configure the following variables:
-   ```env
-   PORT=3000
-   MONGO_URI=your_mongodb_connection_string
-   JWT_SECRET=your_super_secret_jwt_key
-   ```
-4. Start the backend development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+# Navigate to the Backend directory
+cd Backend
+
+# Install dependencies
+npm install
+```
+
+Create a `.env` file in the `Backend` directory and configure the following variables:
+```env
+PORT=3000
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_super_secret_jwt_key
+```
+
+```bash
+# Start the backend development server
+npm run dev
+```
 
 ### 2. Frontend Setup
-1. Open a new terminal and navigate to the `Frontend` directory:
-   ```bash
-   cd Frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file in the `Frontend` directory and add your Jamendo Client ID:
-   ```env
-   VITE_JAMENDO_CLIENT_ID=your_jamendo_client_id
-   ```
-4. Start the frontend development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+# Open a new terminal and navigate to the Frontend directory
+cd Frontend
 
-5. Open your browser and navigate to `http://localhost:5173`.
+# Install dependencies
+npm install
+```
+
+Create a `.env` file in the `Frontend` directory and add your Jamendo Client ID:
+```env
+VITE_JAMENDO_CLIENT_ID=your_jamendo_client_id
+```
+
+```bash
+# Start the frontend development server
+npm run dev
+```
+
+Navigate to `http://localhost:5173` in your browser to view the app!
+
+---
 
 ## 📁 Project Structure
 
-```
+```text
 Moody Player/
 ├── Backend/                 # Express Server & API routes
 │   ├── src/
@@ -236,5 +254,7 @@ Moody Player/
 └── README.md
 ```
 
-## 📝 License
-This project is for educational and portfolio purposes. Data fetched from Jamendo is subject to Jamendo's API usage terms.
+<div align="center">
+  <br/>
+  <i>This project is for educational and portfolio purposes. Data fetched from Jamendo is subject to Jamendo's API usage terms.</i>
+</div>
