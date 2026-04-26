@@ -23,7 +23,7 @@ app.use(
 app.use(express.json());
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-const frontendPath = path.join(__dirname, '../../Frontend/dist');
+const frontendPath = path.join(__dirname, '../public');
 app.use(express.static(frontendPath));
 
 app.get("/health", (req, res) => {
