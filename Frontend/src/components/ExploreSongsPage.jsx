@@ -44,7 +44,7 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
 
   const fetchGlobalLikesMap = async () => {
     try {
-      const res = await axios.get(`${LOCAL_API}/songs/top-liked?limit=1000`);
+      const res = await axios.get(`${API}/songs/top-liked?limit=1000`);
       if (res.data?.songs) {
         const initial = {};
         res.data.songs.forEach((song) => {
@@ -96,9 +96,9 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
     try {
       const config = { headers: { Authorization: `Bearer ${authToken}` } };
       const [ownedRes, collabRes, managedRes] = await Promise.all([
-        axios.get(`${LOCAL_API}/playlists/mine`, config),
-        axios.get(`${LOCAL_API}/playlists/collab`, config),
-        axios.get(`${LOCAL_API}/playlists/managed`, config),
+        axios.get(`${API}/playlists/mine`, config),
+        axios.get(`${API}/playlists/collab`, config),
+        axios.get(`${API}/playlists/managed`, config),
       ]);
 
       const merged = [
@@ -161,7 +161,7 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
 
       if (!songId && track.isJamendo) {
         const songRes = await axios.post(
-          `${LOCAL_API}/songs/external`,
+          `${API}/songs/external`,
           {
             title: track.name,
             artist: track.artist_name,
@@ -174,7 +174,7 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
       }
 
       const response = await axios.post(
-        `${LOCAL_API}/songs/${songId}/like`,
+        `${API}/songs/${songId}/like`,
         {},
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
@@ -216,7 +216,7 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
 
       if (selectedTrack.isJamendo) {
         const songRes = await axios.post(
-          `${LOCAL_API}/songs/external`,
+          `${API}/songs/external`,
           {
             title: selectedTrack.name,
             artist: selectedTrack.artist_name,
@@ -228,13 +228,17 @@ export default function ExploreSongsPage({ activeUser, authToken, startQueue }) 
         songId = songRes.data?.song?._id;
       }
 
-      await axios.post(
-        `${LOCAL_API}/playlists/${playlistId}/songs/transfer`,
+      const res = await axios.post(
+        `${API}/playlists/${playlistId}/songs/transfer`,
         { songId },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
 
-      alert(`Added "${selectedTrack.name}" to playlist!`);
+      if (res.data?.duplicate) {
+        alert("This song already exists in the playlist.");
+      } else {
+        alert(`Added "${selectedTrack.name}" to playlist!`);
+      }
       closePlaylistModal();
     } catch (err) {
       console.error(err);

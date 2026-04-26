@@ -636,18 +636,7 @@ const PlaylistPage = ({
   const isManagedPlaylist = isOwner && contributorCount > 0;
   const canContribute = isOwner || isCollaborator;
 
-  // DEBUG - remove after testing
-  console.log("[PlaylistPage Debug]", {
-    activeUser: normalizedActiveUser,
-    playlistOwnerUsername,
-    contributors: playlist?.contributors,
-    collaboratorUsernames,
-    isOwner,
-    isCollaborator,
-    canContribute,
-    authToken: authToken ? "present" : "missing",
-    playlistId: playlist?._id,
-  });
+
   const shouldShowOwnerLink =
     Boolean(playlistOwnerUsername) &&
     playlistOwnerUsername !== activeUser &&
